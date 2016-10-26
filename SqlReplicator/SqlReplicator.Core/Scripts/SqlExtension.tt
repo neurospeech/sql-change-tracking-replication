@@ -1,0 +1,159 @@
+﻿<#@ template debug="false" hostspecific="true" language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ output extension=".cs" #>
+<# HostDirectory = Path.GetDirectoryName(Host.TemplateFile) + "\\"; #>
+using System;
+using System.ComponentModel;
+using System.Xml.Serialization;
+using System.Runtime.Serialization;
+using System.Text;
+
+using System.Collections.Generic;
+using System.Reflection;
+using System.Linq.Expressions;
+using System.Web;
+using System.Security.Cryptography;
+using System.Data.SqlClient;
+using System.Data.Common;
+
+namespace SqlReplicator.Core
+{
+	public partial class Scripts{
+
+		<#  CreateScriptText("SqlServerGetSchema"); #>
+		<#  CreateScriptText("SqlServerGetColumns"); #>
+
+	}
+}
+<#+ 
+
+
+	public String HostDirectory { get; set; }
+
+	public void CreateScriptText(String name){
+
+		String filePath =  HostDirectory + name + ".sql";
+		String[] script = File.ReadAllLines(filePath);
+
+		var plist = SqlParam.Parse( script.Where(x => x.StartsWith("Declare", StringComparison.OrdinalIgnoreCase)));
+
+		var finalScript = String.Join(" ", script.Where( x => !x.StartsWith("Declare", StringComparison.OrdinalIgnoreCase)) );
+
+#>
+		public static string <#= name #> = "<#= finalScript #>";
+<#+
+	}
+
+
+	public void CreateScript(String name){
+
+		String filePath =  HostDirectory + name + ".sql";
+		String[] script = File.ReadAllLines(filePath);
+
+		var plist = SqlParam.Parse( script.Where(x => x.StartsWith("Declare", StringComparison.OrdinalIgnoreCase)));
+
+		var finalScript = String.Join(" ", script.Where( x => !x.StartsWith("Declare", StringComparison.OrdinalIgnoreCase)) );
+
+		#>
+		public  static String <#= name #> = "<#= finalScript #>";
+		public void Command<#=name #>(DbCommand command,
+			<#= String.Join(",\r\n\t\t\t", plist.Select(p=> p.Type + " " + p.Name)) #>
+		){
+
+			String script = <#=name #>;
+			List<SqlParameter> pvals = new List<SqlParameter>();
+			
+			
+			<#+    foreach(SqlParam ap in plist) { 
+				if(ap.IsArray){#>
+				if(<#=ap.Name #> == null || <#=ap.Name #>.Length == 0){
+					<#=ap.Name #> = new String [] {null};
+				}
+				List<string> aplist = new List<string>();
+				foreach(var v in <#=ap.Name #>){
+					var pname = "@<#=ap.Name #>" + aplist.Count;
+					aplist.Add(pname);
+					pvals.Add(new SqlParameter(pname,v == null ? (object)DBNull.Value : (object)v));
+				}
+				script = script.Replace("@<#=ap.Name #>", string.Join(",",aplist));
+			<#+            
+				}else{
+					#>
+					pvals.Add(new SqlParameter("@<#=ap.Name #>",<#=ap.Name #>));
+<#+
+				}
+			}
+#>
+
+			command.CommandText = script;
+			foreach(var p in pvals){
+				command.Parameters.Add(p);
+			}
+
+		}
+<#+
+
+	} 
+
+	public class SqlParam{
+		public String Name;
+		public String Type;
+		public bool IsArray;
+
+
+		public static List<SqlParam> Parse(IEnumerable<String> lines){
+			List<SqlParam> list = new List<SqlParam>();
+			foreach(var line in lines){
+				var p = Parse(line.Trim());
+				if(p!=null){
+					list.Add(p);
+				}
+			}
+			return list;
+		}
+
+		public static SqlParam Parse(String line){
+			if(!line.StartsWith("Declare", StringComparison.OrdinalIgnoreCase))
+				return null;
+			// look for @
+			string[] tokens = line.Split('@');
+			line = tokens[1];
+			tokens = line.Split(' ','\t');
+			String name = tokens[0];
+			String type = tokens[1];
+
+			return new SqlParam{
+					Name = name,
+					Type = ToClrType(type.ToLower()),
+					IsArray = type.Equals("table", StringComparison.OrdinalIgnoreCase)
+			};
+
+		}
+
+		public static String ToClrType(String type){
+			type = type.ToLower();
+			if(type.StartsWith("nvarchar") || type.StartsWith("varchar"))
+				return "string";
+			if(type.EndsWith("table"))
+				return "string[]";
+			switch(type){
+				case "bit":
+					return "bool?";
+				case "int":
+					return "int?";
+				case "bigint":
+					return "long?";
+				case "float":
+					return "float?";
+				case "datetime":
+					return "DateTime?";
+			}
+			throw new NotImplementedException(type);
+		}
+	}
+
+#>
