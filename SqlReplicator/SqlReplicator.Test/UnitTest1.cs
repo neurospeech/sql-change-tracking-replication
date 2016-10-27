@@ -17,6 +17,11 @@ namespace SqlReplicator.Test
                         Server = "s800",
                         TrustedConnection = true,
                         Database = "SideBusiness"
+                    },
+                    Destination = new ConfigDatabase {
+                        Server = "s800",
+                        TrustedConnection = true,
+                        Database = "SideBusinessR"
                     }
                 };
 

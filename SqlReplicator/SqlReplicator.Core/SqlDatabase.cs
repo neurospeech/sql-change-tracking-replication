@@ -7,18 +7,6 @@ using System.Threading.Tasks;
 
 namespace SqlReplicator.Core
 {
-    public class SqlDatabase
-    {
-
-        /// <summary>
-        /// Name of the database.
-        /// </summary>
-        public string Name;
-
-        public List<SqlTable> Tables { get; } 
-            = new List<SqlTable>();
-
-    }
 
     public class SqlTable {
 

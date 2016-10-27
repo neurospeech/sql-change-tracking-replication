@@ -26,6 +26,7 @@ namespace SqlReplicator.Core
 
 		<#  CreateScriptText("SqlServerGetSchema"); #>
 		<#  CreateScriptText("SqlServerGetColumns"); #>
+		<#  CreateScriptText("CreateReplicationStateTable"); #>
 
 	}
 }

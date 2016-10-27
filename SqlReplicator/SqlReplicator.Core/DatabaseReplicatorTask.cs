@@ -13,8 +13,6 @@ namespace SqlReplicator.Core
 
         public ConfigJob Job { get; set; }
 
-        public List<SqlTable> Tables { get; }
-            = new List<SqlTable>();
 
         public async Task ReplicateAsync() {
 
@@ -33,28 +31,42 @@ namespace SqlReplicator.Core
                         st.Columns.AddRange(table);
 
                         st.PrimaryKey = st.Columns.Where(x => x.IsPrimaryKey).Select(x => x.ColumnName).FirstOrDefault();
-                        Tables.Add(st);
+                        Job.Tables.Add(st);
                     }
 
-                    await sourceQuery.SetupChangeTrackingAsync(Tables);
+                    await sourceQuery.SetupChangeTrackingAsync(Job.Tables);
 
                 }
+
+                using (var destQuery = await Job.Destination.OpenAsync()) {
+
+                    // create ReplicationState table...
+                    await destQuery.ExecuteAsync(Scripts.CreateReplicationStateTable);
+
+                    await Task.WhenAll(Job.Tables.Select(x=>SyncTableSchema(x)));
+
+                }
+
             }
 
             await Task.WhenAll( Job.Tables.Select( x=> SyncTable(x) ) );
 
         }
 
-        private async Task SyncTable(SqlTable x)
+        private async Task SyncTableSchema(SqlTable table)
         {
+            using (var destQuery = await Job.Destination.OpenAsync())
+            {
+                await destQuery.SyncSchema(table.Name, table.Columns);
+            }
+        }
+
+        private async Task SyncTable(SqlTable srcTable)
+        {
+
+            DateTime now = DateTime.UtcNow;
             using (var sourceQuery = await Job.Source.OpenAsync()) {
                 using (var destQuery = await Job.Destination.OpenAsync()) {
-
-
-                    // fetch few records....
-
-
-                    // try to save them...
 
 
                 }

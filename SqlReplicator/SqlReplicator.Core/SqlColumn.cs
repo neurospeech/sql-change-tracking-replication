@@ -62,7 +62,11 @@ namespace SqlReplicator.Core
 
                 if (NumericPrecision != dest.NumericPrecision)
                     return false;
-                if (NumericScale != NumericScale)
+                if (NumericScale != dest.NumericScale)
+                    return false;
+                if (IsNullable != dest.IsNullable)
+                    return false;
+                if (ColumnDefault != dest.ColumnDefault)
                     return false;
 
                 return true;

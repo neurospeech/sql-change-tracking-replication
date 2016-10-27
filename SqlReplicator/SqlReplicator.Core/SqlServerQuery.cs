@@ -42,6 +42,7 @@ namespace SqlReplicator.Core
 
             await conn.OpenAsync();
 
+            Connection = conn;
         }
 
         public override void Dispose()
@@ -103,8 +104,12 @@ namespace SqlReplicator.Core
 
             var allColumns = new List<SqlColumn>();
 
+            var primaryKeys = columns.Where(x => x.IsPrimaryKey).ToList();
+
             string createTable = $"IF NOT EXISTS (SELECT * FROM sysobjects WHERE Name='{name}' AND xtype='U')"
-                + $" CREATE TABLE {name} ({ string.Join(",", columns.Where(x => x.IsPrimaryKey).Select(c => ToColumn(c))) })";
+                + $" CREATE TABLE {name} ({ string.Join(",", primaryKeys.Select(c => ToColumn(c))) }";
+
+            createTable += $" CONSTRAINT PK_{name} PRIMARY KEY CLUSTERED ({ string.Join(", ", primaryKeys.Select(x=>$"[{x.ColumnName}]")) }))";
 
             using (var cmd = CreateCommand(createTable))
             {
@@ -159,17 +164,24 @@ namespace SqlReplicator.Core
 
 
                 bool changeTrackingEnabled = false;
+                bool columnTrackingEnabled = false;
 
                 using (var reader = await ReadAsync($"select * from sys.change_tracking_tables where object_id={table.ID}")) {
 
                     changeTrackingEnabled = await reader.ReadAsync();
+                    if (changeTrackingEnabled) {
+                        columnTrackingEnabled = reader.GetValue<bool>("is_track_columns_updated_on");
+                    }
                 }
 
-                if (!changeTrackingEnabled) {
-                    await ExecuteAsync($"ALTER TABLE [{table.Name}] ENABLE CHANGE_TRACKING");
+                if (!columnTrackingEnabled) {
+                    if (changeTrackingEnabled) {
+                        await ExecuteAsync($"ALTER TABLE [{table.Name}] DISABLE CHANGE_TRACKING");
+                    }
+                    await ExecuteAsync($"ALTER TABLE [{table.Name}] ENABLE CHANGE_TRACKING WITH(TRACK_COLUMNS_UPDATED = ON)");
                 }
 
-                using (var reader = await ReadAsync($"SELECT MAX(EXT.SYS_CHANGE_VERSION) as Value FROM CHANGETABLE(CHANGES [{table.Name}],0) AS EXT")) {
+                using (var reader = await ReadAsync($"SELECT MIN(EXT.SYS_CHANGE_VERSION) as Value FROM CHANGETABLE(CHANGES [{table.Name}],0) AS EXT")) {
                     if (await reader.ReadAsync()) {
                         table.LastVersion = reader.GetValue<long>("Value");
                     }
@@ -198,7 +210,6 @@ namespace SqlReplicator.Core
 
         private static string[] textTypes = new[] { "nvarchar", "varchar" };
         
-        public SqlDatabase Database { get; private set; }
 
         private static bool IsText(string n) => textTypes.Any(a => a.Equals(n, StringComparison.OrdinalIgnoreCase));
 
@@ -225,11 +236,16 @@ namespace SqlReplicator.Core
             if (!c.IsPrimaryKey)
             {
                 // lets allow nullable to every field...
-                name += " NULL ";
+                if (c.IsNullable)
+                {
+                    name += " NULL ";
+                }
+                else {
+                    name += " NOT NULL ";
+                }
             }
-            else
-            {
-                name += " PRIMARY KEY ";
+            if (!string.IsNullOrWhiteSpace(c.ColumnDefault)) {
+                name += " DEFAULT " + c.ColumnDefault;
             }
             return name;
         }
