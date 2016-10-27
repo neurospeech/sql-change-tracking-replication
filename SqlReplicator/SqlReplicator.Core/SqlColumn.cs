@@ -66,8 +66,9 @@ namespace SqlReplicator.Core
                     return false;
                 if (IsNullable != dest.IsNullable)
                     return false;
-                if (ColumnDefault != dest.ColumnDefault)
-                    return false;
+
+                //if (ColumnDefault != dest.ColumnDefault)
+                //    return false;
 
                 return true;
             }
