@@ -79,4 +79,25 @@ namespace SqlReplicator.Core
             return reader.GetValue(ordinal);
         }
     }
+
+
+    public class ChangedData {
+
+        public long LastVersion { get; set; }
+
+        public List<KeyValuePair<string, object>> ChangedValues { get; }
+            = new List<KeyValuePair<string, object>>();
+
+        public List<KeyValuePair<string, object>> PrimaryKeys { get; }
+            = new List<KeyValuePair<string, object>>();
+
+        public ChangeOperation Operation { get; set; }
+
+    }
+
+    public enum ChangeOperation {
+        Insert,
+        Update,
+        Delete
+    }
 }

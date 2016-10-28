@@ -64,6 +64,13 @@ namespace SqlReplicator.Core
 
         public abstract Task<long> GetCurrentVersionAsync(SqlTable srcTable);
 
+        public abstract Task ReadMaxPrimaryKeys(SqlTable srcTable);
+
+        public abstract Task<IEnumerable<ChangedData>> ReadChangedRows(SqlTable srcTable, long lastVersion);
+
+        public abstract Task<SqlRowSet> ReadObjectsAbovePrimaryKeys(SqlTable srcTable);
+        public abstract Task<bool> WriteToServerAsync(SqlTable table,SqlRowSet r);
+        internal abstract Task WriteToServerAsync(SqlTable srcTable, IEnumerable<ChangedData> changes);
 
 
         /*public async Task<IEnumerable<T>> FetchAsync<T>(string query, Dictionary<string, object> plist = null) {

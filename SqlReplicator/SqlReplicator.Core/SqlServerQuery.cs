@@ -294,5 +294,124 @@ namespace SqlReplicator.Core
                 new KeyValuePair<string, object>("@LastVersion", s.LastVersion));
 
         }
+
+        public async override Task ReadMaxPrimaryKeys(SqlTable srcTable)
+        {
+
+            foreach (var pk in srcTable.PrimaryKey) {
+                pk.LastValue = null;
+            }
+
+            var pkNames = string.Join(",", srcTable.PrimaryKey.Select(x => $"[{x.ColumnName}]"));
+            var pkOrderBy = string.Join(",", srcTable.PrimaryKey.Select(x => $"[{x.ColumnName}] DESC"));
+
+            // get last primary keys....
+            string spk = $"SELECT TOP 1 { pkNames } FROM [{srcTable.Name}] ORDER BY {pkOrderBy}";
+            using (var r = await ReadAsync(spk))
+            {
+                if (await r.ReadAsync())
+                {
+                    foreach (var pk in srcTable.PrimaryKey)
+                    {
+                        pk.LastValue = r.GetValue<object>(pk.ColumnName);
+                    }
+                }
+            }
+
+
+        }
+
+        public override async Task<IEnumerable<ChangedData>> ReadChangedRows(SqlTable srcTable, long lastVersion)
+        {
+            List<ChangedData> cdList = new List<Core.ChangedData>();
+            string tableName = srcTable.Name;
+            string primaryKeyJoinOn = string.Join(" AND ", srcTable.PrimaryKey.Select( x=> $"T.[{x.ColumnName}] = CT.[{x.ColumnName}]" ));
+
+            var changeDetection = string.Join(",", srcTable.Columns.Select(
+                x => x.IsPrimaryKey ?
+                    $"T.{x.ColumnName} AS D_{x.ColumnName}" :
+                    $"(CASE CHANGE_TRACKING_IS_COLUMN_IN_MASK({x.ID},CT.SYS_CHANGE_COLUMNS) WHEN 1 THEN T.[{x.ColumnName}]  ELSE NULL END) as [D_{x.ColumnName}], CHANGE_TRACKING_IS_COLUMN_IN_MASK({x.ID},CT.SYS_CHANGE_COLUMNS) AS [IC_{x.ColumnName}]")
+                );
+
+            string sq = $"SELECT TOP 100 {changeDetection}, CT.SYS_CHANGE_OPERATION AS C_OP, CT.SYS_CHANGE_VERSION AS C_V FROM CHANGETABLE(CHANGES {tableName},@lastVersion) AS CT "
+                + $"JOIN [{tableName}] as T ON ({primaryKeyJoinOn})"
+                + " ORDER BY CT.SYS_CHANGE_VERSION ASC";
+
+            var otherColumns = srcTable.Columns.Where(x => !x.IsPrimaryKey).ToArray();
+
+            using (var r = await ReadAsync(sq, new KeyValuePair<string, object>("@lastVersion", lastVersion))) {
+                while (await r.ReadAsync()) {
+
+                    var cd = new ChangedData { };
+
+                    foreach (var pk in srcTable.PrimaryKey) {
+                        object v = r.GetValue<object>($"D_{pk.ColumnName}");
+                        cd.PrimaryKeys.Add(new KeyValuePair<string, object>(pk.ColumnName,v));
+                    }
+
+                    foreach (var c in otherColumns) {
+                        if (r.GetValue<bool>("IC_" + c.ColumnName)) {
+                            object v = r.GetValue<object>($"D_{c.ColumnName}");
+                            cd.ChangedValues.Add(new KeyValuePair<string, object>(c.ColumnName,v));
+                        }
+                    }
+
+                    cd.LastVersion = r.GetValue<long>("C_V");
+
+                    cd.Operation = ChangeOperation.Update;
+                    var op = r.GetValue<string>("C_OP");
+                    if (op == "I")
+                    {
+                        cd.Operation = ChangeOperation.Insert;
+                    }
+                    else if(op == "D"){
+                        cd.Operation = ChangeOperation.Delete;
+                    }
+
+                    cdList.Add(cd);
+
+                }
+            }
+            return cdList;
+        }
+
+        public override Task<SqlRowSet> ReadObjectsAbovePrimaryKeys(SqlTable srcTable)
+        {
+            string s = $"SELECT TOP 1000 * FROM [{srcTable.Name}]";
+            KeyValuePair<string, object>[] parray = null;
+
+            
+
+            if (srcTable.PrimaryKey.Any(x=>x.LastValue != null))
+            {
+                s += $" WHERE { string.Join(" AND ", srcTable.PrimaryKey.Select(x => $"[{x.ColumnName}] > @C{x.ID}"))} ";
+                parray = srcTable.PrimaryKey.Select(x => new KeyValuePair<string, object>($"@C{x.ID}", x.LastValue)).ToArray();
+            }
+
+            s += $" ORDER BY { string.Join(",", srcTable.PrimaryKey.Select(x => $"[{x.ColumnName}]")) }";
+
+            return ReadAsync(s, parray);
+        }
+
+        public async override Task<bool> WriteToServerAsync(SqlTable table,SqlRowSet r)
+        {
+            bool copied = false;
+            using (SqlBulkCopy bcp = new SqlBulkCopy(this.conn, SqlBulkCopyOptions.KeepIdentity | SqlBulkCopyOptions.UseInternalTransaction,null)) {
+
+                bcp.SqlRowsCopied += (s, e) => {
+                    copied = true;
+                };
+
+                bcp.DestinationTableName = table.Name;
+                
+                await bcp.WriteToServerAsync(r.Reader);
+            }
+            return copied;
+        }
+
+        internal override Task WriteToServerAsync(SqlTable srcTable, IEnumerable<ChangedData> changes)
+        {
+            throw new NotImplementedException();
+        }
     }
 }
