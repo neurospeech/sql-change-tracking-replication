@@ -1,0 +1,12 @@
+﻿DECLARE @TableName nvarchar(50);
+BEGIN
+	UPDATE CT_REPLICATIONSTATE SET
+		BeginSync = GETUTCDATE()
+	WHERE 
+		TableName = @TableName
+
+	IF @@ROWCOUNT = 0 
+	BEGIN
+		INSERT INTO CT_REPLICATIONSTATE(TableName,BeginSync) VALUES(@TableName,GETUTCDATE())
+	END
+END

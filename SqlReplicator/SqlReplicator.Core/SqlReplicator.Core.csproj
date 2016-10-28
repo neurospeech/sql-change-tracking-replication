@@ -77,12 +77,14 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Scripts\CreateReplicationStateTable.sql" />
+    <Content Include="Scripts\BeginSyncRST.sql" />
     <Content Include="Scripts\SqlExtension.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
       <LastGenOutput>SqlExtension.cs</LastGenOutput>
     </Content>
     <Content Include="Scripts\SqlServerGetColumns.sql" />
     <Content Include="Scripts\SqlServerGetSchema.sql" />
+    <Content Include="Scripts\UpdateRST.sql" />
   </ItemGroup>
   <ItemGroup>
     <Service Include="{508349B6-6B84-4DF5-91F0-309BEEBAD82D}" />

@@ -12,7 +12,10 @@ namespace SqlReplicator.Core
 
         public string Name { get; set; }
 
-        public string PrimaryKey { get; set; }
+
+        private IEnumerable<SqlColumn> _PrimaryKey = null;
+        public IEnumerable<SqlColumn> PrimaryKey
+            => _PrimaryKey ?? (_PrimaryKey = Columns.Where(x => x.IsPrimaryKey).ToList());
 
         public long ID { get; set; }
 

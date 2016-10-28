@@ -36,6 +36,9 @@ namespace SqlReplicator.Core
         public DbType DbType { get; set; }
 
         public bool IsPrimaryKey { get; set; }
+
+        public object LastValue { get; set; }
+
         public string ParamName
         {
             get

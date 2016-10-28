@@ -51,7 +51,7 @@ namespace SqlReplicator.Core
             conn = null;
         }
 
-        public override DbCommand CreateCommand(String command, Dictionary<string, object> plist = null)
+        public override DbCommand CreateCommand(String command, params KeyValuePair<string, object>[] plist)
         {
             var cmd = conn.CreateCommand();
             cmd.CommandText = command;
@@ -73,9 +73,9 @@ namespace SqlReplicator.Core
             List<SqlColumn> columns = new List<SqlColumn>();
             string sqlColumns = Scripts.SqlServerGetSchema;
 
-            using (var reader = await ReadAsync(sqlColumns, new Dictionary<string, object> {
-                { "@TableName", tableName }
-            }))
+            using (var reader = await ReadAsync(sqlColumns, 
+                new KeyValuePair<string,object>( "@TableName", tableName )
+            ))
             {
 
 
@@ -137,7 +137,7 @@ namespace SqlReplicator.Core
 
                 long m = DateTime.UtcNow.Ticks;
 
-                using (var cmd = CreateCommand($"EXEC sp_rename '{name}.{dest.ColumnName}', '{dest.ColumnName}_{m}'"))
+                using (var cmd = CreateCommand($"EXEC sp_rename '[{name}].[{dest.ColumnName}]', '[{dest.ColumnName}_{m}]'"))
                 {
                     await cmd.ExecuteNonQueryAsync();
                 }
@@ -146,7 +146,7 @@ namespace SqlReplicator.Core
 
             foreach (var column in columnsToAdd)
             {
-                using (var cmd = CreateCommand($"ALTER TABLE {name} ADD " + ToColumn(column)))
+                using (var cmd = CreateCommand($"ALTER TABLE [{name}] ADD " + ToColumn(column)))
                 {
                     await cmd.ExecuteNonQueryAsync();
                 }
@@ -208,7 +208,7 @@ namespace SqlReplicator.Core
             }
         }
 
-        private static string[] textTypes = new[] { "nvarchar", "varchar" };
+        private static string[] textTypes = new[] { "nvarchar", "varchar", "varbinary" };
         
 
         private static bool IsText(string n) => textTypes.Any(a => a.Equals(n, StringComparison.OrdinalIgnoreCase));
@@ -217,7 +217,7 @@ namespace SqlReplicator.Core
 
         private string ToColumn(SqlColumn c)
         {
-            var name = $"{c.ColumnName} {c.DataType}";
+            var name = $"[{c.ColumnName}] {c.DataType}";
             if (IsText(c.DataType))
             {
                 if (c.DataLength > 0 && c.DataLength < int.MaxValue)
@@ -248,6 +248,51 @@ namespace SqlReplicator.Core
                 name += " DEFAULT " + c.ColumnDefault;
             }
             return name;
+        }
+
+        public override async Task<SyncState> GetLastSyncVersion(SqlTable srcTable)
+        {
+            string name = srcTable.Name;
+
+            await ExecuteAsync(Scripts.BeginSyncRST,
+                new KeyValuePair<string, object>("@TableName", name));
+
+
+
+            string primaryKeyJoinOn = string.Join(" AND ",
+                srcTable.PrimaryKey.Select(x => $"CT.{x.ColumnName} = T.{x.ColumnName}"));
+
+            var r = await ReadAsync(
+                "SELECT * FROM CT_REPLICATIONSTATE WHERE TableName=@TableName",
+                new KeyValuePair<string, object>("@TableName", name));
+
+            SyncState ss = new Core.SyncState();
+
+            if (await r.ReadAsync()) {
+                ss.BeginSync = r.GetValue<DateTime?>("BeginSync");
+                ss.EndSync = r.GetValue<DateTime?>("EndSync");
+                ss.LastFullSync = r.GetValue<DateTime?>("LastFullSync");
+                ss.LastSyncResult = r.GetValue<string>("LastSyncResult");
+                ss.LastVersion = r.GetValue<long>("LastVersion");
+
+            }
+
+            return ss;
+        }
+
+        public override Task<long> GetCurrentVersionAsync(SqlTable srcTable)
+        {
+            return ExecuteScalarAsync<long>("SELECT CHANGE_TRACKING_CURRENT_VERSION ( ) ");
+        }
+
+        public override Task UpdateSyncState(SyncState s)
+        {
+            return ExecuteScalarAsync<int>(Scripts.UpdateRST,
+                new KeyValuePair<string, object>("@TableName", s.TableName),
+                new KeyValuePair<string, object>("@LastFullSync", s.LastFullSync),
+                new KeyValuePair<string, object>("@LastSyncResult", s.LastSyncResult),
+                new KeyValuePair<string, object>("@LastVersion", s.LastVersion));
+
         }
     }
 }

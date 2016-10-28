@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Data.Common;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -17,11 +19,29 @@ namespace SqlReplicator.Core
         {
             this.reader = reader;
             this.command = command;
+
+            
         }
+
+        public DbDataReader Reader => this.reader;
 
         public async Task<bool> ReadAsync()
         {
             return await reader.ReadAsync();
+        }
+
+
+        public DataTable GetSchemaTable() {
+            return reader.GetSchemaTable();
+        }
+
+        public DataTable GetTable() {
+            
+            DataTable dt = new DataTable();
+            dt.Load(this.reader);
+            //if (dt.Rows.Count>0)
+            //    Debugger.Break();
+            return dt;
         }
 
         public T GetValue<T>(string name)
