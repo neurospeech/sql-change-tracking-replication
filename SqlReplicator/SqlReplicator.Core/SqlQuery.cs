@@ -7,6 +7,26 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Transactions;
 
+
+namespace SqlReplicator
+{
+
+    public static class StringExtensions
+    {
+
+        //public static string Combine(this IEnumerable<string> en, string joinText = ", ") {
+        //    return string.Join(joinText, en);
+        //}
+
+        public static string ToText<T>(this IEnumerable<T> en, string joinText, Func<T, string> selector)
+        {
+            return string.Join(joinText, en.Select(selector));
+        }
+    }
+
+}
+
+
 namespace SqlReplicator.Core
 {
     public abstract class SqlQuery : IDisposable
