@@ -12,6 +12,8 @@ namespace SqlReplicator.Core
 
         public long ID { get; set; }
 
+        public long TableID { get; set; }
+
         public string TableName { get; set; }
 
         public int Ordinal { get; set; }
@@ -36,6 +38,8 @@ namespace SqlReplicator.Core
         public DbType DbType { get; set; }
 
         public bool IsPrimaryKey { get; set; }
+
+        public bool IsIdentity { get; set; }
 
         public object LastValue { get; set; }
 

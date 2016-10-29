@@ -90,7 +90,9 @@ namespace SqlReplicator.Core
 
         public abstract Task<SqlRowSet> ReadObjectsAbovePrimaryKeys(SqlTable srcTable);
         public abstract Task<bool> WriteToServerAsync(SqlTable table,SqlRowSet r);
-        internal abstract Task WriteToServerAsync(SqlTable srcTable, IEnumerable<ChangedData> changes);
+        internal abstract Task WriteToServerAsync(SqlTable srcTable, IEnumerable<ChangedData> changes, SyncState state);
+
+        public abstract string Escape(string text);
 
 
         /*public async Task<IEnumerable<T>> FetchAsync<T>(string query, Dictionary<string, object> plist = null) {
@@ -117,7 +119,7 @@ namespace SqlReplicator.Core
         public string TableName { get; set; }
         public DateTime? EndSync { get; set; }
         public DateTime? BeginSync { get; set; }
-        public DateTime? LastFullSync { get; set; }
+        public DateTime LastFullSync { get; set; }
         public string LastSyncResult { get; set; }
         public long LastVersion { get; set; }
     }

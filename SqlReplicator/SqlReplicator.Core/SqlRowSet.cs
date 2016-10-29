@@ -85,14 +85,28 @@ namespace SqlReplicator.Core
 
         public long LastVersion { get; set; }
 
-        public List<KeyValuePair<string, object>> ChangedValues { get; }
-            = new List<KeyValuePair<string, object>>();
+        public List<DataField> ChangedValues { get; }
+            = new List<DataField>();
 
-        public List<KeyValuePair<string, object>> PrimaryKeys { get; }
-            = new List<KeyValuePair<string, object>>();
+        public List<DataField> PrimaryKeys { get; }
+            = new List<DataField>();
 
         public ChangeOperation Operation { get; set; }
 
+    }
+
+    public struct DataField {
+
+        public DataField(string columnName, string v1, object v2) : this()
+        {
+            this.FieldName = columnName;
+            this.ParamName = v1;
+            this.Value = v2;
+        }
+
+        public string FieldName { get; set; }
+        public string ParamName { get; set; }
+        public object Value { get; set; }
     }
 
     public enum ChangeOperation {

@@ -5,6 +5,7 @@ using System.Data.SqlClient;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Transactions;
 
 namespace SqlReplicator.Core
 {
@@ -65,6 +66,10 @@ namespace SqlReplicator.Core
             return cmd;
         }
 
+        public override string Escape(string text)
+        {
+            return $"[{text}]";
+        }
 
         public override async Task<List<SqlColumn>> GetCommonSchemaAsync(string tableName = null)
         {
@@ -83,6 +88,9 @@ namespace SqlReplicator.Core
                 {
                     SqlColumn col = new SqlColumn();
                     col.TableName = reader.GetValue<string>("TableName");
+                    col.TableID = reader.GetValue<long>("TableID");
+                    col.ID = reader.GetValue<long>("ColumnID");
+                    col.IsIdentity = reader.GetValue<bool>("IsIdentity");
                     col.ColumnName = reader.GetValue<string>("ColumnName");
                     col.IsPrimaryKey = reader.GetValue<bool>("IsPrimaryKey");
                     col.IsNullable = reader.GetValue<string>("IsNullable") == "YES";
@@ -107,9 +115,9 @@ namespace SqlReplicator.Core
             var primaryKeys = columns.Where(x => x.IsPrimaryKey).ToList();
 
             string createTable = $"IF NOT EXISTS (SELECT * FROM sysobjects WHERE Name='{name}' AND xtype='U')"
-                + $" CREATE TABLE {name} ({ string.Join(",", primaryKeys.Select(c => ToColumn(c))) }";
+                + $" CREATE TABLE {Escape(name)} ({ string.Join(",", primaryKeys.Select(c => ToColumn(c))) }";
 
-            createTable += $" CONSTRAINT PK_{name} PRIMARY KEY CLUSTERED ({ string.Join(", ", primaryKeys.Select(x=>$"[{x.ColumnName}]")) }))";
+            createTable += $" CONSTRAINT {Escape("PK_" + name)} PRIMARY KEY CLUSTERED ({ string.Join(", ", primaryKeys.Select(x=>$"{Escape(x.ColumnName)}")) }))";
 
             using (var cmd = CreateCommand(createTable))
             {
@@ -137,7 +145,7 @@ namespace SqlReplicator.Core
 
                 long m = DateTime.UtcNow.Ticks;
 
-                using (var cmd = CreateCommand($"EXEC sp_rename '[{name}].[{dest.ColumnName}]', '[{dest.ColumnName}_{m}]'"))
+                using (var cmd = CreateCommand($"EXEC sp_rename '{Escape(name)}.{Escape(dest.ColumnName)}', '{Escape($"{dest.ColumnName}_{m}")}'"))
                 {
                     await cmd.ExecuteNonQueryAsync();
                 }
@@ -146,7 +154,7 @@ namespace SqlReplicator.Core
 
             foreach (var column in columnsToAdd)
             {
-                using (var cmd = CreateCommand($"ALTER TABLE [{name}] ADD " + ToColumn(column)))
+                using (var cmd = CreateCommand($"ALTER TABLE {Escape(name)} ADD " + ToColumn(column)))
                 {
                     await cmd.ExecuteNonQueryAsync();
                 }
@@ -158,7 +166,7 @@ namespace SqlReplicator.Core
         internal async override Task SetupChangeTrackingAsync(List<SqlTable> tables)
         {
 
-            await FetchIDsAsync(tables);
+            //await FetchIDsAsync(tables);
 
             foreach (var table in tables) {
 
@@ -176,12 +184,12 @@ namespace SqlReplicator.Core
 
                 if (!columnTrackingEnabled) {
                     if (changeTrackingEnabled) {
-                        await ExecuteAsync($"ALTER TABLE [{table.Name}] DISABLE CHANGE_TRACKING");
+                        await ExecuteAsync($"ALTER TABLE {Escape(table.Name)} DISABLE CHANGE_TRACKING");
                     }
-                    await ExecuteAsync($"ALTER TABLE [{table.Name}] ENABLE CHANGE_TRACKING WITH(TRACK_COLUMNS_UPDATED = ON)");
+                    await ExecuteAsync($"ALTER TABLE {Escape(table.Name)} ENABLE CHANGE_TRACKING WITH(TRACK_COLUMNS_UPDATED = ON)");
                 }
 
-                using (var reader = await ReadAsync($"SELECT MIN(EXT.SYS_CHANGE_VERSION) as Value FROM CHANGETABLE(CHANGES [{table.Name}],0) AS EXT")) {
+                using (var reader = await ReadAsync($"SELECT MIN(EXT.SYS_CHANGE_VERSION) as Value FROM CHANGETABLE(CHANGES {Escape(table.Name)},0) AS EXT")) {
                     if (await reader.ReadAsync()) {
                         table.LastVersion = reader.GetValue<long>("Value");
                     }
@@ -190,23 +198,23 @@ namespace SqlReplicator.Core
             }
         }
 
-        private async Task FetchIDsAsync(List<SqlTable> tables)
-        {
-            using (var reader = await ReadAsync(Scripts.SqlServerGetColumns)) {
-                while (await reader.ReadAsync()) {
-                    long tableID = reader.GetValue<long>("TableID");
-                    string tableName = reader.GetValue<string>("TableName");
-                    long columnID = reader.GetValue<long>("ColumnID");
-                    string columnName = reader.GetValue<string>("ColumnName");
+        //private async Task FetchIDsAsync(List<SqlTable> tables)
+        //{
+        //    using (var reader = await ReadAsync(Scripts.SqlServerGetColumns)) {
+        //        while (await reader.ReadAsync()) {
+        //            long tableID = reader.GetValue<long>("TableID");
+        //            string tableName = reader.GetValue<string>("TableName");
+        //            long columnID = reader.GetValue<long>("ColumnID");
+        //            string columnName = reader.GetValue<string>("ColumnName");
 
-                    var table = tables.FirstOrDefault(x => x.Name.Equals(tableName, StringComparison.OrdinalIgnoreCase));
-                    table.ID = tableID;
+        //            var table = tables.FirstOrDefault(x => x.Name.Equals(tableName, StringComparison.OrdinalIgnoreCase));
+        //            table.ID = tableID;
 
-                    var column = table.Columns.FirstOrDefault(x => x.ColumnName.Equals(columnName, StringComparison.OrdinalIgnoreCase));
-                    column.ID = columnID;
-                }
-            }
-        }
+        //            var column = table.Columns.FirstOrDefault(x => x.ColumnName.Equals(columnName, StringComparison.OrdinalIgnoreCase));
+        //            column.ID = columnID;
+        //        }
+        //    }
+        //}
 
         private static string[] textTypes = new[] { "nvarchar", "varchar", "varbinary" };
         
@@ -217,7 +225,7 @@ namespace SqlReplicator.Core
 
         private string ToColumn(SqlColumn c)
         {
-            var name = $"[{c.ColumnName}] {c.DataType}";
+            var name = $"{Escape(c.ColumnName)} {c.DataType}";
             if (IsText(c.DataType))
             {
                 if (c.DataLength > 0 && c.DataLength < int.MaxValue)
@@ -262,22 +270,25 @@ namespace SqlReplicator.Core
             string primaryKeyJoinOn = string.Join(" AND ",
                 srcTable.PrimaryKey.Select(x => $"CT.{x.ColumnName} = T.{x.ColumnName}"));
 
-            var r = await ReadAsync(
+            using (var r = await ReadAsync(
                 "SELECT * FROM CT_REPLICATIONSTATE WHERE TableName=@TableName",
-                new KeyValuePair<string, object>("@TableName", name));
+                new KeyValuePair<string, object>("@TableName", name)))
+            {
 
-            SyncState ss = new Core.SyncState();
+                SyncState ss = new Core.SyncState();
 
-            if (await r.ReadAsync()) {
-                ss.BeginSync = r.GetValue<DateTime?>("BeginSync");
-                ss.EndSync = r.GetValue<DateTime?>("EndSync");
-                ss.LastFullSync = r.GetValue<DateTime?>("LastFullSync");
-                ss.LastSyncResult = r.GetValue<string>("LastSyncResult");
-                ss.LastVersion = r.GetValue<long>("LastVersion");
+                if (await r.ReadAsync())
+                {
+                    ss.TableName = r.GetValue<string>("TableName");
+                    ss.BeginSync = r.GetValue<DateTime?>("BeginSync");
+                    ss.EndSync = r.GetValue<DateTime?>("EndSync");
+                    ss.LastFullSync = r.GetValue<DateTime>("LastFullSync");
+                    ss.LastSyncResult = r.GetValue<string>("LastSyncResult");
+                    ss.LastVersion = r.GetValue<long>("LastVersion");
 
+                }
+                return ss;
             }
-
-            return ss;
         }
 
         public override Task<long> GetCurrentVersionAsync(SqlTable srcTable)
@@ -302,11 +313,11 @@ namespace SqlReplicator.Core
                 pk.LastValue = null;
             }
 
-            var pkNames = string.Join(",", srcTable.PrimaryKey.Select(x => $"[{x.ColumnName}]"));
-            var pkOrderBy = string.Join(",", srcTable.PrimaryKey.Select(x => $"[{x.ColumnName}] DESC"));
+            var pkNames = string.Join(",", srcTable.PrimaryKey.Select(x => $"{Escape(x.ColumnName)}"));
+            var pkOrderBy = string.Join(",", srcTable.PrimaryKey.Select(x => $"{Escape(x.ColumnName)} DESC"));
 
             // get last primary keys....
-            string spk = $"SELECT TOP 1 { pkNames } FROM [{srcTable.Name}] ORDER BY {pkOrderBy}";
+            string spk = $"SELECT TOP 1 { pkNames } FROM {Escape(srcTable.Name)} ORDER BY {pkOrderBy}";
             using (var r = await ReadAsync(spk))
             {
                 if (await r.ReadAsync())
@@ -325,16 +336,16 @@ namespace SqlReplicator.Core
         {
             List<ChangedData> cdList = new List<Core.ChangedData>();
             string tableName = srcTable.Name;
-            string primaryKeyJoinOn = string.Join(" AND ", srcTable.PrimaryKey.Select( x=> $"T.[{x.ColumnName}] = CT.[{x.ColumnName}]" ));
+            string primaryKeyJoinOn = string.Join(" AND ", srcTable.PrimaryKey.Select( x=> $"T.{Escape(x.ColumnName)} = CT.{Escape(x.ColumnName)}" ));
 
             var changeDetection = string.Join(",", srcTable.Columns.Select(
                 x => x.IsPrimaryKey ?
-                    $"T.{x.ColumnName} AS D_{x.ColumnName}" :
-                    $"(CASE CHANGE_TRACKING_IS_COLUMN_IN_MASK({x.ID},CT.SYS_CHANGE_COLUMNS) WHEN 1 THEN T.[{x.ColumnName}]  ELSE NULL END) as [D_{x.ColumnName}], CHANGE_TRACKING_IS_COLUMN_IN_MASK({x.ID},CT.SYS_CHANGE_COLUMNS) AS [IC_{x.ColumnName}]")
+                    $"T.{Escape(x.ColumnName)} AS {Escape("D_" +x.ColumnName)}" :
+                    $"(CASE CHANGE_TRACKING_IS_COLUMN_IN_MASK({x.ID},CT.SYS_CHANGE_COLUMNS) WHEN 1 THEN T.{Escape(x.ColumnName)}  ELSE NULL END) as {Escape("D_" + x.ColumnName)}, CHANGE_TRACKING_IS_COLUMN_IN_MASK({x.ID},CT.SYS_CHANGE_COLUMNS) AS {Escape("IC_" + x.ColumnName)}")
                 );
 
-            string sq = $"SELECT TOP 100 {changeDetection}, CT.SYS_CHANGE_OPERATION AS C_OP, CT.SYS_CHANGE_VERSION AS C_V FROM CHANGETABLE(CHANGES {tableName},@lastVersion) AS CT "
-                + $"JOIN [{tableName}] as T ON ({primaryKeyJoinOn})"
+            string sq = $"SELECT TOP 100 {changeDetection}, CT.SYS_CHANGE_OPERATION AS C_OP, CT.SYS_CHANGE_VERSION AS C_V FROM CHANGETABLE(CHANGES {Escape(tableName)},@lastVersion) AS CT "
+                + $"JOIN {Escape(tableName)} as T ON ({primaryKeyJoinOn})"
                 + " ORDER BY CT.SYS_CHANGE_VERSION ASC";
 
             var otherColumns = srcTable.Columns.Where(x => !x.IsPrimaryKey).ToArray();
@@ -344,15 +355,17 @@ namespace SqlReplicator.Core
 
                     var cd = new ChangedData { };
 
+                    int i = 1;
+
                     foreach (var pk in srcTable.PrimaryKey) {
                         object v = r.GetValue<object>($"D_{pk.ColumnName}");
-                        cd.PrimaryKeys.Add(new KeyValuePair<string, object>(pk.ColumnName,v));
+                        cd.PrimaryKeys.Add(new DataField(pk.ColumnName,"@p" + (i++),v));
                     }
 
                     foreach (var c in otherColumns) {
                         if (r.GetValue<bool>("IC_" + c.ColumnName)) {
                             object v = r.GetValue<object>($"D_{c.ColumnName}");
-                            cd.ChangedValues.Add(new KeyValuePair<string, object>(c.ColumnName,v));
+                            cd.ChangedValues.Add(new DataField(c.ColumnName, "@p" + (i++), v));
                         }
                     }
 
@@ -377,18 +390,18 @@ namespace SqlReplicator.Core
 
         public override Task<SqlRowSet> ReadObjectsAbovePrimaryKeys(SqlTable srcTable)
         {
-            string s = $"SELECT TOP 1000 * FROM [{srcTable.Name}]";
+            string s = $"SELECT TOP 1000 * FROM {Escape(srcTable.Name)}";
             KeyValuePair<string, object>[] parray = null;
 
             
 
             if (srcTable.PrimaryKey.Any(x=>x.LastValue != null))
             {
-                s += $" WHERE { string.Join(" AND ", srcTable.PrimaryKey.Select(x => $"[{x.ColumnName}] > @C{x.ID}"))} ";
+                s += $" WHERE { string.Join(" AND ", srcTable.PrimaryKey.Select(x => $"{Escape(x.ColumnName)} > @C{x.ID}"))} ";
                 parray = srcTable.PrimaryKey.Select(x => new KeyValuePair<string, object>($"@C{x.ID}", x.LastValue)).ToArray();
             }
 
-            s += $" ORDER BY { string.Join(",", srcTable.PrimaryKey.Select(x => $"[{x.ColumnName}]")) }";
+            s += $" ORDER BY { string.Join(",", srcTable.PrimaryKey.Select(x => $"{Escape(x.ColumnName)}")) }";
 
             return ReadAsync(s, parray);
         }
@@ -399,19 +412,77 @@ namespace SqlReplicator.Core
             using (SqlBulkCopy bcp = new SqlBulkCopy(this.conn, SqlBulkCopyOptions.KeepIdentity | SqlBulkCopyOptions.UseInternalTransaction,null)) {
 
                 bcp.SqlRowsCopied += (s, e) => {
-                    copied = true;
+                    if (e.RowsCopied > 0)
+                    {
+                        copied = true;
+                    }
                 };
 
-                bcp.DestinationTableName = table.Name;
+                bcp.DestinationTableName = Escape(table.Name);
+
+                
                 
                 await bcp.WriteToServerAsync(r.Reader);
             }
             return copied;
         }
 
-        internal override Task WriteToServerAsync(SqlTable srcTable, IEnumerable<ChangedData> changes)
+        internal async override Task WriteToServerAsync(
+            SqlTable srcTable, 
+            IEnumerable<ChangedData> changes, SyncState state)
         {
-            throw new NotImplementedException();
+            
+            using (var transaction = new TransactionScope(TransactionScopeOption.Required, TransactionScopeAsyncFlowOption.Enabled))
+            {
+
+                foreach (var change in changes)
+                {
+
+
+                    var cv = change.ChangedValues;
+                    var pk = change.PrimaryKeys;
+
+
+                    switch (change.Operation)
+                    {
+                        case ChangeOperation.Insert:
+                            {
+
+                                var all = pk.Concat(cv).ToList();
+
+                                // insert all..
+                                string insertScript = $"SET IDENTITY_INSERT {Escape(srcTable.Name)} ON; INSERT INTO {Escape(srcTable.Name)}({all.ToText(", ", x => Escape(x.FieldName))}) VALUES ({all.ToText(",", x => x.ParamName)}); SET IDENTITY_INSERT {Escape(srcTable.Name)} OFF";
+                                await ExecuteAsync(insertScript, all.Select(x => new KeyValuePair<string, object>(x.ParamName, x.Value)).ToArray());
+                            }
+                            break;
+                        case ChangeOperation.Update:
+                            {
+                                var all = pk.Concat(cv).ToList();
+
+                                string updateScript = $"UPDATE {Escape(srcTable.Name)} SET {cv.ToText(", ", x => $"{Escape(x.FieldName)} = {x.ParamName}")} WHERE ({pk.ToText(" AND ", x => $"{x.ParamName} = {Escape(x.FieldName)}")})";
+                                await ExecuteAsync(updateScript, all.Select(x => new KeyValuePair<string, object>(x.ParamName, x.Value)).ToArray());
+
+                            }
+                            break;
+                        case ChangeOperation.Delete:
+
+                            string deleteScript = $"DELETE {Escape(srcTable.Name)} WHERE ({pk.ToText(" AND ", x => $"{x.ParamName} = {Escape(x.FieldName)}")})";
+                            await ExecuteAsync(deleteScript, pk.Select(x => new KeyValuePair<string, object>(x.ParamName, x.Value)).ToArray());
+
+
+                            break;
+                        default:
+                            break;
+                    }
+
+                    state.LastVersion = change.LastVersion;
+                    state.LastSyncResult = "Replication Success";
+
+                }
+                await UpdateSyncState(state);
+
+                transaction.Complete();
+            }
         }
     }
 }

@@ -14,14 +14,14 @@ namespace SqlReplicator.Test
             using (DatabaseReplicatorTask test = new DatabaseReplicatorTask()) {
                 test.Job = new ConfigJob {
                     Source = new ConfigDatabase {
-                        Server = "s800",
+                        Server = "(localdb)\\MSSQLLocalDB",
                         TrustedConnection = true,
-                        Database = "SideBusiness"
+                        Database = "SourceDB"
                     },
                     Destination = new ConfigDatabase {
-                        Server = "s800",
+                        Server = "(localdb)\\MSSQLLocalDB",
                         TrustedConnection = true,
-                        Database = "SideBusinessR"
+                        Database = "SourceDBR"
                     }
                 };
 

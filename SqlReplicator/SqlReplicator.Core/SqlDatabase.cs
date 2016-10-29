@@ -12,6 +12,7 @@ namespace SqlReplicator.Core
 
         public string Name { get; set; }
 
+        public bool HasIdentity { get; set; }
 
         private IEnumerable<SqlColumn> _PrimaryKey = null;
         public IEnumerable<SqlColumn> PrimaryKey

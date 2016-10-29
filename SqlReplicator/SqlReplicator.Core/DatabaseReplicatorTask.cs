@@ -30,7 +30,8 @@ namespace SqlReplicator.Core
                 foreach (var table in columns.GroupBy(x => x.TableName)) {
                     SqlTable st = new SqlTable();
                     st.Name = table.Key;
-
+                    st.ID = table.First().TableID;
+                    st.HasIdentity = table.Any(x => x.IsIdentity);
                     st.Columns.AddRange(table);
 
                     if (!st.PrimaryKey.Any()) {
@@ -74,7 +75,7 @@ namespace SqlReplicator.Core
         private async Task SyncTable(SqlTable srcTable)
         {
             SyncState state = null;
-            DateTime now = DateTime.UtcNow;
+            DateTime now = DateTime.UtcNow.AddDays(-10);
             using (var sourceQuery = await Job.Source.OpenAsync()) {
                 using (var destQuery = await Job.Destination.OpenAsync()) {
 
@@ -83,8 +84,8 @@ namespace SqlReplicator.Core
                     {
 
                         state = await destQuery.GetLastSyncVersion(srcTable);
-
-                        if (state.LastFullSync == null)
+                        
+                        if (state.LastFullSync < now)
                         {
                             // full sync pending ???
 
@@ -96,13 +97,19 @@ namespace SqlReplicator.Core
                             await destQuery.UpdateSyncState(state);
 
                             await FullSyncAsync(sourceQuery, destQuery, srcTable);
+
+                            state.LastFullSync = DateTime.UtcNow;
+                            state.LastSyncResult = "Full sync finished";
+                            await destQuery.UpdateSyncState(state);
                             return;
 
                         }
 
                         var changes = await sourceQuery.ReadChangedRows(srcTable, state.LastVersion);
-
-                        await destQuery.WriteToServerAsync(srcTable, changes);
+                        if (changes.Any())
+                        {
+                            await destQuery.WriteToServerAsync(srcTable, changes, state);
+                        }
 
                     }
                     catch (Exception ex) {
@@ -130,6 +137,8 @@ namespace SqlReplicator.Core
                 }
 
             } 
+
+            
 
         }
 
