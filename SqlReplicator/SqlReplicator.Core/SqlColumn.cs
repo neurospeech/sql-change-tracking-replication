@@ -43,7 +43,7 @@ namespace SqlReplicator.Core
 
         public object LastValue { get; set; }
 
-        public string ParamName
+        public virtual string ParamName
         {
             get
             {
