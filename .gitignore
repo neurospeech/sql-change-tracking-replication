@@ -1,17 +1,7 @@
 ﻿################################################################################
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
-
-/SqlReplicator/.vs/SqlReplicator/v14
-/SqlReplicator/bin/Debug
-/SqlReplicator/obj/Debug
-/SqlReplicator/NeuroSpeech.SqlReplicator.Service/bin/Debug
-/SqlReplicator/NeuroSpeech.SqlReplicator.Service/obj/Debug
+**/obj
+**/bin
+**/.vs
 /SqlReplicator/packages
-/SqlReplicator/ReplicatorTest/obj/Debug
-/SqlReplicator/SqlReplicator/bin/Debug
-/SqlReplicator/SqlReplicator/obj/Debug
-/SqlReplicator/SqlReplicator.Core/bin/Debug
-/SqlReplicator/SqlReplicator.Core/obj/Debug
-/SqlReplicator/SqlReplicator.Test/bin/Debug
-/SqlReplicator/SqlReplicator.Test/obj/Debug
