@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -35,6 +36,8 @@ namespace SqlReplicator.Core
 
         protected ConfigDatabase config;
 
+        protected bool Log = false;
+
 
         public SqlQuery(ConfigDatabase config)
         {
@@ -45,24 +48,49 @@ namespace SqlReplicator.Core
 
         public abstract Task Open();
 
-        public abstract DbCommand CreateCommand(String command, params KeyValuePair<string, object>[] plist);
+        public abstract DbCommand CreateCommand(string command, IEnumerable<KeyValuePair<string, object>> plist = null);
 
-        public async Task<SqlRowSet> ReadAsync(string command, params KeyValuePair<string, object>[] plist)
+        public Task<SqlRowSet> ReadAsync(string command, params KeyValuePair<string, object>[] plist) {
+            return this.ReadAsync(command, (IEnumerable<KeyValuePair<string,object>>)plist);
+        }
+        public async Task<SqlRowSet> ReadAsync(string command, IEnumerable<KeyValuePair<string, object>> plist = null)
         {
             var cmd = CreateCommand(command, plist);
+            if (Log)
+            {
+                Trace.WriteLine(cmd.CommandText);
+            }
             return new SqlRowSet(cmd, await cmd.ExecuteReaderAsync());
         }
 
-        public async Task<int> ExecuteAsync(string command, params KeyValuePair<string, object>[] plist)
+        public async Task<int> ExecuteAsync(string command, IEnumerable<KeyValuePair<string, object>> plist = null)
         {
             using (var cmd = CreateCommand(command, plist))
             {
+                if (Log)
+                {
+                    Trace.WriteLine(cmd.CommandText);
+                }
                 return await cmd.ExecuteNonQueryAsync();
             }
         }
 
-        public async Task<T> ExecuteScalarAsync<T>(string command, params KeyValuePair<string,object>[] plist) {
+        public Task<int> ExecuteAsync(string command, params KeyValuePair<string, object>[] plist)
+        {
+            return this.ExecuteAsync(command, (IEnumerable<KeyValuePair<string, object>>)plist);
+        }
+
+        public Task<T> ExecuteScalarAsync<T>(string command, params KeyValuePair<string, object>[] plist)
+        {
+            return ExecuteScalarAsync<T>(command, (IEnumerable<KeyValuePair<string, object>>)plist);
+        }
+
+        public async Task<T> ExecuteScalarAsync<T>(string command, IEnumerable<KeyValuePair<string,object>> plist = null) {
             using (var cmd = CreateCommand(command, plist)) {
+                if (Log)
+                {
+                    Trace.WriteLine(cmd.CommandText);
+                }
                 var obj = await cmd.ExecuteScalarAsync();
                 if (obj == null)
                     return default(T);
@@ -93,6 +121,8 @@ namespace SqlReplicator.Core
         internal abstract Task WriteToServerAsync(SqlTable srcTable, IEnumerable<ChangedData> changes, SyncState state);
 
         public abstract string Escape(string text);
+
+        public abstract Task CreateReplicationStateTable();
 
 
         /*public async Task<IEnumerable<T>> FetchAsync<T>(string query, Dictionary<string, object> plist = null) {

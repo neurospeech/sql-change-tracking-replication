@@ -29,6 +29,7 @@ namespace SqlReplicator.Core
 		<#  CreateScriptText("CreateReplicationStateTable"); #>
 		<#  CreateScriptText("BeginSyncRST"); #>
 		<#  CreateScriptText("UpdateRST"); #>
+		<#  CreateScriptText("MySqlCreateReplicationTable"); #>
 
 	}
 }

@@ -29,13 +29,69 @@ namespace SqlReplicator.Core
 
         public string DataType { get; set; }
 
-        public int DataLength { get; set; }
+        public long DataLength { get; set; }
 
         public bool IsNullable { get; set; }
 
         public Type CLRType { get; set; }
 
-        public DbType DbType { get; set; }
+        public virtual DbType DbType {
+            get {
+
+                switch(DataType.ToLower())
+                {
+                    case "nvarchar":
+                    case "varchar":
+                        if (DataLength>0)
+                        {
+                            return DbType.StringFixedLength;
+                        }
+                        return DbType.String;
+                    case "ntext":
+                    case "text":
+                    case "longtext":
+                    case "mediumtext":
+                        return DbType.String;
+                    case "bit":
+                    case "boolean":
+                    case "tinyint":
+                        return DbType.Boolean;
+                    case "date":
+                    case "datetime":
+                    case "datetime2":
+                    case "datetimeoffset":
+                        return DbType.DateTime;
+                    case "time":
+                        return DbType.Time;
+                    case "real":
+                    case "float":
+                    case "double":
+                        return DbType.Double;
+                    case "decimal":
+                        return DbType.Decimal;
+                    case "int":
+                        return DbType.Int32;
+                    case "bigint":
+                        return DbType.Int64;
+                    case "uniqueidentifier":
+                    case "guid":
+                        return DbType.Guid;
+                    case "binary":
+                        if (this.DataLength == 16 && 
+                            (this.ColumnDefault?.ToLower()?.Contains("uuid") ?? false))
+                        {
+                            return DbType.Guid;
+                        }
+                        return DbType.Binary;
+                    case "geometry":
+                    case "geography":
+                        return DbType.Object;
+
+                    
+                }
+                return DbType.Binary;
+            }
+        }
 
         public bool IsPrimaryKey { get; set; }
 
@@ -61,8 +117,31 @@ namespace SqlReplicator.Core
             var dest = obj as SqlColumn;
             if (dest != null)
             {
-                if (!DataType.Equals(dest.DataType, StringComparison.OrdinalIgnoreCase))
+                //if (!DataType.Equals(dest.DataType, StringComparison.OrdinalIgnoreCase))
+                //    return false;
+
+                if (this.DbType != dest.DbType)
+                {
                     return false;
+                }
+
+                if (this.DbType == DbType.Boolean)
+                    return true;
+
+                if (this.DbType == DbType.Guid)
+                {
+                    return true;
+                }
+
+                if (this.DbType == DbType.String || this.DbType == DbType.StringFixedLength)
+                {
+                    if (this.DataLength == -1 || dest.DataLength == -1)
+                        return true;
+                    if (this.DataLength >= int.MaxValue || dest.DataLength >= int.MaxValue)
+                    {
+                        return true;
+                    }
+                }
 
                 if (DataLength != dest.DataLength)
                     return false;

@@ -52,7 +52,7 @@ namespace SqlReplicator.Core
             conn = null;
         }
 
-        public override DbCommand CreateCommand(String command, params KeyValuePair<string, object>[] plist)
+        public override DbCommand CreateCommand(String command, IEnumerable<KeyValuePair<string, object>> plist = null)
         {
             var cmd = conn.CreateCommand();
             cmd.CommandText = command;
@@ -219,11 +219,11 @@ namespace SqlReplicator.Core
         private static string[] textTypes = new[] { "nvarchar", "varchar", "varbinary" };
         
 
-        private static bool IsText(string n) => textTypes.Any(a => a.Equals(n, StringComparison.OrdinalIgnoreCase));
+        protected static bool IsText(string n) => textTypes.Any(a => a.Equals(n, StringComparison.OrdinalIgnoreCase));
 
-        private static bool IsDecimal(string n) => n.Equals("decimal", StringComparison.OrdinalIgnoreCase);
+        protected static bool IsDecimal(string n) => n.Equals("decimal", StringComparison.OrdinalIgnoreCase);
 
-        private string ToColumn(SqlColumn c)
+        protected virtual string ToColumn(SqlColumn c)
         {
             var name = $"{Escape(c.ColumnName)} {c.DataType}";
             if (IsText(c.DataType))
@@ -348,7 +348,7 @@ namespace SqlReplicator.Core
                 + $"JOIN {Escape(tableName)} as T ON ({primaryKeyJoinOn})"
                 + " ORDER BY CT.SYS_CHANGE_VERSION ASC";
 
-            var otherColumns = srcTable.Columns.Where(x => !x.IsPrimaryKey).ToArray();
+            var otherColumns = srcTable.Columns.Where(x => !x.IsPrimaryKey);
 
             using (var r = await ReadAsync(sq, new KeyValuePair<string, object>("@lastVersion", lastVersion))) {
                 while (await r.ReadAsync()) {
@@ -390,15 +390,16 @@ namespace SqlReplicator.Core
 
         public override Task<SqlRowSet> ReadObjectsAbovePrimaryKeys(SqlTable srcTable)
         {
-            string s = $"SELECT TOP 1000 * FROM {Escape(srcTable.Name)}";
-            KeyValuePair<string, object>[] parray = null;
+            string s = $"SELECT TOP 1000 {string.Join(",", srcTable.Columns.Select(x => Escape(x.ColumnName)))} FROM " +
+                $"{Escape(srcTable.Name)}";
+            IEnumerable<KeyValuePair<string, object>> parray = null;
 
             
 
             if (srcTable.PrimaryKey.Any(x=>x.LastValue != null))
             {
                 s += $" WHERE { string.Join(" AND ", srcTable.PrimaryKey.Select(x => $"{Escape(x.ColumnName)} > @C{x.ID}"))} ";
-                parray = srcTable.PrimaryKey.Select(x => new KeyValuePair<string, object>($"@C{x.ID}", x.LastValue)).ToArray();
+                parray = srcTable.PrimaryKey.Select(x => new KeyValuePair<string, object>($"@C{x.ID}", x.LastValue));
             }
 
             s += $" ORDER BY { string.Join(",", srcTable.PrimaryKey.Select(x => $"{Escape(x.ColumnName)}")) }";
@@ -452,7 +453,7 @@ namespace SqlReplicator.Core
 
                                 // insert all..
                                 string insertScript = $"SET IDENTITY_INSERT {Escape(srcTable.Name)} ON; INSERT INTO {Escape(srcTable.Name)}({all.ToText(", ", x => Escape(x.FieldName))}) VALUES ({all.ToText(",", x => x.ParamName)}); SET IDENTITY_INSERT {Escape(srcTable.Name)} OFF";
-                                await ExecuteAsync(insertScript, all.Select(x => new KeyValuePair<string, object>(x.ParamName, x.Value)).ToArray());
+                                await ExecuteAsync(insertScript, all.Select(x => new KeyValuePair<string, object>(x.ParamName, x.Value)));
                             }
                             break;
                         case ChangeOperation.Update:
@@ -460,14 +461,14 @@ namespace SqlReplicator.Core
                                 var all = pk.Concat(cv).ToList();
 
                                 string updateScript = $"UPDATE {Escape(srcTable.Name)} SET {cv.ToText(", ", x => $"{Escape(x.FieldName)} = {x.ParamName}")} WHERE ({pk.ToText(" AND ", x => $"{x.ParamName} = {Escape(x.FieldName)}")})";
-                                await ExecuteAsync(updateScript, all.Select(x => new KeyValuePair<string, object>(x.ParamName, x.Value)).ToArray());
+                                await ExecuteAsync(updateScript, all.Select(x => new KeyValuePair<string, object>(x.ParamName, x.Value)));
 
                             }
                             break;
                         case ChangeOperation.Delete:
 
                             string deleteScript = $"DELETE {Escape(srcTable.Name)} WHERE ({pk.ToText(" AND ", x => $"{x.ParamName} = {Escape(x.FieldName)}")})";
-                            await ExecuteAsync(deleteScript, pk.Select(x => new KeyValuePair<string, object>(x.ParamName, x.Value)).ToArray());
+                            await ExecuteAsync(deleteScript, pk.Select(x => new KeyValuePair<string, object>(x.ParamName, x.Value)));
 
 
                             break;
@@ -483,6 +484,11 @@ namespace SqlReplicator.Core
 
                 transaction.Complete();
             }
+        }
+
+        public override Task CreateReplicationStateTable()
+        {
+            return ExecuteAsync(Scripts.CreateReplicationStateTable);
         }
     }
 }

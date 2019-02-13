@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -35,7 +36,9 @@ namespace SqlReplicator.Core
                     st.Columns.AddRange(table);
 
                     if (!st.PrimaryKey.Any()) {
-                        throw new InvalidOperationException("Each table for replication must have atleast one primary key");
+                        // throw new InvalidOperationException("Each table for replication must have atleast one primary key");
+                        Trace.TraceWarning($"Table {table.Key} does not have any primary key");
+                        continue;
                     }
 
                     Job.Tables.Add(st);
@@ -53,14 +56,21 @@ namespace SqlReplicator.Core
                 {
 
                     // create ReplicationState table...
-                    await destQuery.ExecuteAsync(Scripts.CreateReplicationStateTable);
+                    // await destQuery.ExecuteAsync(Scripts.CreateReplicationStateTable);
+                    await destQuery.CreateReplicationStateTable();
 
                     await Task.WhenAll(Job.Tables.Select(x => SyncTableSchema(x)));
 
                 }
             }
 
-            await Task.WhenAll( Job.Tables.Select( x=> SyncTable(x) ) );
+            // await Task.WhenAll( Job.Tables.Select( x=> SyncTable(x) ) );
+
+            foreach (var table in Job.Tables)
+            {
+                await SyncTableSchema(table);
+                // await SyncTable(table);
+            }
 
         }
 
@@ -68,6 +78,7 @@ namespace SqlReplicator.Core
         {
             using (var destQuery = await Job.Destination.OpenAsync())
             {
+                Trace.WriteLine($"SYNC SCHEMA: {table.Name}");
                 await destQuery.SyncSchema(table.Name, table.Columns);
             }
         }
@@ -113,6 +124,7 @@ namespace SqlReplicator.Core
 
                     }
                     catch (Exception ex) {
+                        Trace.TraceError(ex.ToString());
                         state.LastSyncResult = ex.ToString();
                         await destQuery.UpdateSyncState(state);
                     }

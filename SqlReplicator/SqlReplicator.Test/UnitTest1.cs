@@ -14,14 +14,11 @@ namespace SqlReplicator.Test
             using (DatabaseReplicatorTask test = new DatabaseReplicatorTask()) {
                 test.Job = new ConfigJob {
                     Source = new ConfigDatabase {
-                        Server = "(localdb)\\MSSQLLocalDB",
                         TrustedConnection = true,
-                        Database = "SourceDB"
                     },
                     Destination = new ConfigDatabase {
-                        Server = "(localdb)\\MSSQLLocalDB",
-                        TrustedConnection = true,
-                        Database = "SourceDBR"
+                        Provider = "MySql.Data.MySqlClient",
+                        Username = "test",
                     }
                 };
 

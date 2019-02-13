@@ -21,6 +21,7 @@ namespace SqlReplicator.Core
 				public static string CreateReplicationStateTable = "IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = N'CT_REPLICATIONSTATE') BEGIN 	CREATE TABLE CT_REPLICATIONSTATE ( 		TableName VARCHAR(100) PRIMARY KEY, 		EndSync DATETIME NOT NULL DEFAULT GETUTCDATE(), 		BeginSync DATETIME NOT NULL DEFAULT GETUTCDATE(), 		LastSyncResult NVARCHAR(MAX) NULL, 		LastFullSync DATETIME NOT NULL DEFAULT DATEADD(year,-1,GETUTCDATE()), 		LastVersion BIGINT NOT NULL DEFAULT 0 	) END";
 				public static string BeginSyncRST = "BEGIN 	UPDATE CT_REPLICATIONSTATE SET 		BeginSync = GETUTCDATE() 	WHERE  		TableName = @TableName  	IF @@ROWCOUNT = 0  	BEGIN 		INSERT INTO CT_REPLICATIONSTATE(TableName,BeginSync) VALUES(@TableName,GETUTCDATE()) 	END END";
 				public static string UpdateRST = "UPDATE CT_REPLICATIONSTATE SET 	EndSync = GETUTCDATE(), 	LastSyncResult = ISNULL(@LastSyncResult,LastSyncResult), 	LastFullSync = @LastFullSync, 	LastVersion = @LastVersion WHERE  	TableName = @TableName";
+				public static string MySqlCreateReplicationTable = "	CREATE TABLE IF NOT EXISTS CT_REPLICATIONSTATE ( 		TableName VARCHAR(100), 		EndSync DATETIME NOT NULL DEFAULT now(), 		BeginSync DATETIME NOT NULL DEFAULT now(), 		LastSyncResult LONGTEXT NULL, 		LastFullSync DATETIME NOT NULL DEFAULT now(), 		LastVersion BIGINT NOT NULL DEFAULT 0, 		PRIMARY KEY(TableName) 	)";
 
 	}
 }

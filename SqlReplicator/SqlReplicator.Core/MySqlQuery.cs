@@ -4,26 +4,30 @@ using System.Collections.Generic;
 using System.Data.Common;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace SqlReplicator.Core
 {
-    public class MySqlQuery : SqlQuery
+    public class MySqlQuery : SqlServerQuery
     {
         MySqlConnection conn;
         public MySqlQuery(ConfigDatabase config) : base(config)
         {
-
+            Log = true;
         }
 
         #region CreateCommand
-        public override DbCommand CreateCommand(string command, params KeyValuePair<string, object>[] plist)
+        public override DbCommand CreateCommand(string command, IEnumerable<KeyValuePair<string, object>> plist = null)
         {
             var cmd = conn.CreateCommand();
             cmd.CommandText = command;
-            foreach (var item in plist)
+            if (plist != null)
             {
-                cmd.Parameters.AddWithValue(item.Key, item.Value);
+                foreach (var item in plist)
+                {
+                    cmd.Parameters.AddWithValue(item.Key, item.Value ?? DBNull.Value);
+                }
             }
             return cmd;
         }
@@ -34,6 +38,8 @@ namespace SqlReplicator.Core
             conn.Dispose();
         }
 
+        
+
         public override string Escape(string text)
         {
             return $"`{text}`";
@@ -43,15 +49,18 @@ namespace SqlReplicator.Core
         public async override Task<List<SqlColumn>> GetCommonSchemaAsync(string tableName = null)
         {
             List<SqlColumn> columns = new List<SqlColumn>();
-            using (var reader = await ReadAsync($"select * from INFORMATION_SCHEMA.COLUMNS where table_schema  = @TableName",
+            using (var reader = await ReadAsync($"select * from INFORMATION_SCHEMA.COLUMNS where table_schema = @Schema AND table_name = @TableName",
+                new KeyValuePair<string, object>("@Schema", this.config.Database),
                 new KeyValuePair<string, object>("@TableName", tableName)))
             {
                 while (await reader.ReadAsync())
                 {
                     SqlColumn col = new MySqlColumn();
                     col.TableName = reader.GetValue<string>("Table_Name");
-                    col.TableID = reader.GetValue<long>("Table_Name");
-                    col.ID = reader.GetValue<long>("Column_Name");
+                    if (!col.TableName.Equals(tableName, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    // col.TableID = reader.GetValue<long>("Table_Name");
+                    // col.ID = reader.GetValue<long>("Column_Name");
                     col.IsIdentity = reader.GetValue<string>("EXTRA")
                         .Equals("auto_increment", StringComparison.OrdinalIgnoreCase);
                     col.ColumnName = reader.GetValue<string>("Column_Name");
@@ -61,7 +70,11 @@ namespace SqlReplicator.Core
                         .Equals("YES", StringComparison.OrdinalIgnoreCase);
                     col.ColumnDefault = reader.GetValue<string>("Column_Default");
                     col.DataType = reader.GetValue<string>("Data_Type");
-                    col.DataLength = reader.GetValue<int>("Character_Maximum_Length");
+                    col.DataLength = reader.GetValue<long>("Character_Maximum_Length");
+                    if (col.DataLength >= int.MaxValue)
+                    {
+                        col.DataLength = -1;
+                    }
                     col.NumericPrecision = reader.GetValue<decimal?>("Numeric_Precision");
                     col.NumericScale = reader.GetValue<decimal?>("Numeric_Scale");
 
@@ -176,31 +189,251 @@ namespace SqlReplicator.Core
         public override Task<SqlRowSet> ReadObjectsAbovePrimaryKeys(SqlTable srcTable)
         {
             string s = $"SELECT TOP 1000 * FROM {Escape(srcTable.Name)}";
-            KeyValuePair<string, object>[] parray = null;
+            IEnumerable<KeyValuePair<string, object>> parray = null;
 
 
 
             if (srcTable.PrimaryKey.Any(x => x.LastValue != null))
             {
                 s += $" WHERE { string.Join(" AND ", srcTable.PrimaryKey.Select(x => $"{Escape(x.ColumnName)} > @C{x.ID}"))} ";
-                parray = srcTable.PrimaryKey.Select(x => new KeyValuePair<string, object>($"@C{x.ID}", x.LastValue)).ToArray();
+                parray = srcTable.PrimaryKey.Select(x => new KeyValuePair<string, object>($"@C{x.ID}", x.LastValue));
             }
 
             s += $" ORDER BY { string.Join(",", srcTable.PrimaryKey.Select(x => $"{Escape(x.ColumnName)}")) }";
 
             return ReadAsync(s, parray);
-        } 
+        }
         #endregion
 
-        public override Task SyncSchema(string name, List<SqlColumn> schemaTable)
+        public override Task CreateReplicationStateTable()
         {
+            return ExecuteAsync(Scripts.MySqlCreateReplicationTable);
+        }
+
+        public override async Task SyncSchema(string name, List<SqlColumn> columns)
+        {
+            var allColumns = new List<SqlColumn>();
+
+            var destColumns = await GetCommonSchemaAsync(name);
+
+            var primaryKeys = columns.Where(x => x.IsPrimaryKey).ToList();
+
+            string createTable = $" CREATE TABLE IF NOT EXISTS {Escape(name)} " +
+                $"({ string.Join(",", primaryKeys.Select(c => ToColumn(c))) }, ";
+
+            if (destColumns.Count == 0)
+            {
+                await ExecuteAsync($"DROP TABLE IF EXISTS {Escape(name)}");
+                var otherColumns = columns.Where(x => !x.IsPrimaryKey).Select(x => ToColumn(x));
+                if (otherColumns.Any())
+                {
+                    createTable += string.Join(", \r\n", otherColumns) + ", ";
+                }
+            }
+
+            createTable += $" PRIMARY KEY({ string.Join(",", primaryKeys.Select(x => Escape(x.ColumnName))) }) )";
+
+            await ExecuteAsync(createTable);
+
+            if (destColumns.Count == 0)
+            {
+                return;
+            }
+
+            List<SqlColumn> columnsToAdd = new List<SqlColumn>();
+
+            foreach (var column in columns)
+            {
+                var dest = destColumns.FirstOrDefault(x => x.ColumnName == column.ColumnName);
+                if (dest == null)
+                {
+                    columnsToAdd.Add(column);
+                    continue;
+                }
+                if (dest.Equals(column))
+                {
+                    continue;
+                }
+                columnsToAdd.Add(column);
+                // rename....
+
+                long m = DateTime.UtcNow.Ticks;
+
+                await ExecuteAsync($"ALTER TABLE {Escape(name)} RENAME COLUMN {Escape(dest.ColumnName)} TO " +
+                    $" {Escape($"{dest.ColumnName}_{m}")}");
+
+            }
+
+            var columnsQuery = string.Join(",\r\n\t", columnsToAdd.Select(c => $"ADD {ToColumn(c)}"));
+            await ExecuteAsync($"ALTER TABLE {Escape(name)} {columnsQuery}");
+
+            Console.WriteLine($"Table {name} sync complete");
+        }
+
+        string ToDataType(SqlColumn c)
+        {
+            switch (c.DbType)
+            {
+                case System.Data.DbType.AnsiString:
+                case System.Data.DbType.String:
+                    return "longtext";
+                case System.Data.DbType.AnsiStringFixedLength:
+                case System.Data.DbType.StringFixedLength:
+                    return "varchar";
+                case System.Data.DbType.Int64:
+                    return "bigint";
+                case System.Data.DbType.Binary:
+                    if (c.DataLength == -1)
+                    {
+                        return "longblob";
+                    }
+                    return "binary";
+                case System.Data.DbType.Byte:
+                    return "byte";
+                case System.Data.DbType.Boolean:
+                    return "boolean";
+                case System.Data.DbType.Currency:
+                    return "money";
+                case System.Data.DbType.Date:
+                    return "date";
+                case System.Data.DbType.DateTime:
+                    return "datetime";
+                case System.Data.DbType.Decimal:
+                    return "decimal";
+                case System.Data.DbType.Double:
+                    return "float";
+                case System.Data.DbType.Guid:
+                    return "binary(16)";
+                case System.Data.DbType.Int16:
+                    return "int";
+                case System.Data.DbType.Int32:
+                    return "int";
+                case System.Data.DbType.Object:
+                    return "geometry";
+                case System.Data.DbType.SByte:
+                    break;
+                case System.Data.DbType.Single:
+                    return "float";
+                case System.Data.DbType.Time:
+                    return "TIMESTAMP";
+                case System.Data.DbType.UInt16:
+                    return "int";
+                case System.Data.DbType.UInt32:
+                    return "int";
+                case System.Data.DbType.UInt64:
+                    return "bigint";
+                case System.Data.DbType.VarNumeric:
+                    break;
+                case System.Data.DbType.Xml:
+                    break;
+                case System.Data.DbType.DateTime2:
+                case System.Data.DbType.DateTimeOffset:
+                    return "DATETIME";
+            }
             throw new NotImplementedException();
         }
+        protected override string ToColumn(SqlColumn c)
+        {
+            var dt = ToDataType(c);
+
+            var name = $"{Escape(c.ColumnName)} {dt}";
+            if (IsText(c.DataType))
+            {
+                if (
+                    c.DbType == System.Data.DbType.String || 
+                    c.DbType == System.Data.DbType.AnsiString || (c.DbType == System.Data.DbType.Binary && c.DataLength  == -1)) { }
+                else
+                {
+                    if (c.DataLength > 0 && c.DataLength < int.MaxValue)
+                    {
+                        name += $"({ c.DataLength })";
+                    }
+                    else
+                    {
+                        name += "(MAX)";
+                    }
+                }
+            }
+            if (IsDecimal(c.DataType))
+            {
+                name += $"({ c.NumericPrecision },{ c.NumericScale })";
+            }
+            if (!c.IsPrimaryKey)
+            {
+                // lets allow nullable to every field...
+                if (c.IsNullable)
+                {
+                    name += " NULL ";
+                }
+                else
+                {
+                    name += " NOT NULL ";
+                }
+            }
+            if (!string.IsNullOrWhiteSpace(c.ColumnDefault))
+            {
+                name += " DEFAULT " + GetDefaultColumnValue(c);
+            }
+            if (c.IsIdentity)
+            {
+                name += " AUTO_INCREMENT";
+            }
+            return name;
+        }
+
+        string GetDefaultColumnValue(SqlColumn c)
+        {
+            if (c.ColumnDefault.StartsWith("("))
+            {
+                c.ColumnDefault = c.ColumnDefault.Substring(1);
+            }
+            if (c.ColumnDefault.EndsWith(")"))
+            {
+                c.ColumnDefault = c.ColumnDefault.Substring(0, c.ColumnDefault.Length - 1 );
+            }
+            switch (c.DbType)
+            {
+                case System.Data.DbType.Int16:
+                case System.Data.DbType.Int32:
+                case System.Data.DbType.Int64:
+                case System.Data.DbType.Boolean:
+                case System.Data.DbType.Double:
+                case System.Data.DbType.Decimal:
+                    if (c.ColumnDefault == "(0)")
+                        return " 0";
+                    break;
+                case System.Data.DbType.Guid:
+                    return "( UUID())";
+                case System.Data.DbType.Date:
+                case System.Data.DbType.DateTime:
+                case System.Data.DbType.DateTime2:
+                case System.Data.DbType.DateTimeOffset:
+                    // ((2016)-(12))-(1)
+                    if (c.ColumnDefault.StartsWith("((") && c.ColumnDefault.EndsWith(")")) {
+                        var tokens = c.ColumnDefault.Split('-')
+                            .Select(x => x.Trim('(', ')'));
+                        return "\"" + string.Join("-", tokens) + "\"";
+                    }
+                    if (c.ColumnDefault.ToLower().Contains("getutcdate"))
+                    {
+                        return " (UTC_TIMESTAMP())";
+                    }
+                    if (c.ColumnDefault.ToLower().Contains("getdate"))
+                    {
+                        return " (now())";
+                    }
+                    return c.ColumnDefault;
+            }
+            return c.ColumnDefault;
+        }
+
 
         #region UpdateSyncState
         public override Task UpdateSyncState(SyncState s)
         {
-            return ExecuteScalarAsync<int>(Scripts.UpdateRST,
+            return ExecuteScalarAsync<int>($"REPLACE INTO CT_REPLICATIONSTATE SET" +
+                $" EndSync = now(), TableName = @TableName, LastFullSync = $LastFullSync," +
+                $" LastSyncResult = @LastSyncResult, LastVersion = @LastVersion",
                 new KeyValuePair<string, object>("@TableName", s.TableName),
                 new KeyValuePair<string, object>("@LastFullSync", s.LastFullSync),
                 new KeyValuePair<string, object>("@LastSyncResult", s.LastSyncResult),
@@ -208,9 +441,47 @@ namespace SqlReplicator.Core
         }
         #endregion
 
-        public override Task<bool> WriteToServerAsync(SqlTable table, SqlRowSet r)
+        public override async Task<bool> WriteToServerAsync(SqlTable table, SqlRowSet r)
         {
-            throw new NotImplementedException();
+            var cmd = $"REPLACE INTO {Escape(table.Name)} ({ string.Join(",", table.Columns.Select(x => Escape(x.ColumnName))) }) VALUES ";
+            StringBuilder batch = new StringBuilder();
+            while (true)
+            {
+                batch.Clear();
+                batch.Append(cmd);
+                var reader = r.Reader;
+                List<KeyValuePair<string, object>> plist = new List<KeyValuePair<string, object>>();
+                for (int i = 0; i < 100; i++)
+                {
+                    if(await r.ReadAsync()) {
+                        int n = 0;
+                        if (i > 0)
+                        {
+                            batch.Append(',');
+                        }
+                        batch.Append('(');
+                        foreach (var item in table.Columns)
+                        {
+                            if (n>0)
+                            {
+                                batch.Append(',');
+                            }
+                            var pn = $"@p{i}_{n++}";
+                            plist.Add(new KeyValuePair<string, object>(pn, r.GetRawValue(item.ColumnName)));
+                            batch.Append(pn);
+                        }
+                        batch.Append(')');
+                        continue;
+                    }
+                    break;
+                }
+                if (plist.Count == 0)
+                {
+                    break;
+                }
+                await ExecuteAsync(batch.ToString(), plist);
+            }
+            return true;
         }
 
         internal override Task SetupChangeTrackingAsync(List<SqlTable> tables)
@@ -218,9 +489,31 @@ namespace SqlReplicator.Core
             throw new NotImplementedException();
         }
 
-        internal override Task WriteToServerAsync(SqlTable srcTable, IEnumerable<ChangedData> changes, SyncState state)
+        internal override async Task WriteToServerAsync(SqlTable srcTable, IEnumerable<ChangedData> changes, SyncState state)
         {
-            throw new NotImplementedException();
+            using(var tx = await conn.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted)) {
+
+                foreach(var change in changes)
+                {
+                    switch (change.Operation)
+                    {
+                        case ChangeOperation.Delete:
+                            var pklist = change.PrimaryKeys.Select(x => $"{Escape(x.FieldName)} = {x.ParamName}");
+                            var pkvlist = change.PrimaryKeys.Select(x => new KeyValuePair<string, object>(x.ParamName, x.Value));
+                            await ExecuteAsync($"DELETE FROM {srcTable.Name} WHERE {string.Join(",", pklist)}", 
+                                pkvlist);
+                            break;
+                        case ChangeOperation.Update:
+                        case ChangeOperation.Insert:
+                            var plist = change.ChangedValues.Select(x => $"{Escape(x.FieldName)} = {x.ParamName}");
+                            var pvlist = change.ChangedValues.Select(x => new KeyValuePair<string, object>(x.ParamName, x.Value));
+                            await ExecuteAsync($"REPLACE INTO {srcTable.Name} {string.Join(",", plist)}", pvlist);
+                            break;
+                    }
+                }
+
+                tx.Commit();
+            }
         }
     }
 }

@@ -227,10 +227,17 @@ namespace SqlReplicator.Core
             }
         }
 
-        internal async Task<SqlQuery> OpenAsync()
+        internal virtual async Task<SqlQuery> OpenAsync()
         {
             if (Provider.Equals("System.Data.SqlClient", StringComparison.OrdinalIgnoreCase)) {
                 var q = new SqlServerQuery(this);
+                await q.Open();
+                return q;
+            }
+
+            if (Provider.Equals("MySql.Data.MySqlClient", StringComparison.OrdinalIgnoreCase))
+            {
+                var q = new MySqlQuery(this);
                 await q.Open();
                 return q;
             }
