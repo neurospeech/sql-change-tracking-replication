@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Data.Entity.Spatial;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -95,8 +96,8 @@ namespace SqlReplicator.Core
         public async override Task<SyncState> GetLastSyncVersion(SqlTable srcTable)
         {
             string name = srcTable.Name;
-
-            await ExecuteAsync(Scripts.BeginSyncRST,
+            var beginSync = $"REPLACE INTO CT_REPLICATIONSTATE SET BeginSync = UTC_TIMESTAMP(), TableName = @TableName";
+            await ExecuteAsync(beginSync,
                 new KeyValuePair<string, object>("@TableName", name));
 
 
@@ -171,7 +172,7 @@ namespace SqlReplicator.Core
             var pkOrderBy = string.Join(",", srcTable.PrimaryKey.Select(x => $"{Escape(x.ColumnName)} DESC"));
 
             // get last primary keys....
-            string spk = $"SELECT TOP 1 { pkNames } FROM {Escape(srcTable.Name)} ORDER BY {pkOrderBy}";
+            string spk = $"SELECT { pkNames } FROM {Escape(srcTable.Name)} ORDER BY {pkOrderBy} LIMIT 1";
             using (var r = await ReadAsync(spk))
             {
                 if (await r.ReadAsync())
@@ -303,7 +304,7 @@ namespace SqlReplicator.Core
                 case System.Data.DbType.Double:
                     return "float";
                 case System.Data.DbType.Guid:
-                    return "binary(16)";
+                    return "varchar(36)";
                 case System.Data.DbType.Int16:
                     return "int";
                 case System.Data.DbType.Int32:
@@ -432,7 +433,7 @@ namespace SqlReplicator.Core
         public override Task UpdateSyncState(SyncState s)
         {
             return ExecuteScalarAsync<int>($"REPLACE INTO CT_REPLICATIONSTATE SET" +
-                $" EndSync = now(), TableName = @TableName, LastFullSync = $LastFullSync," +
+                $" EndSync = now(), TableName = @TableName, LastFullSync = @LastFullSync," +
                 $" LastSyncResult = @LastSyncResult, LastVersion = @LastVersion",
                 new KeyValuePair<string, object>("@TableName", s.TableName),
                 new KeyValuePair<string, object>("@LastFullSync", s.LastFullSync),
@@ -467,6 +468,10 @@ namespace SqlReplicator.Core
                                 batch.Append(',');
                             }
                             var pn = $"@p{i}_{n++}";
+                            var rv = r.GetRawValue(item.ColumnName);
+                            if (rv is DbGeography dg) {
+                                rv = DbGeometry.PointFromText(dg.WellKnownValue.WellKnownText, dg.WellKnownValue.CoordinateSystemId);
+                            }
                             plist.Add(new KeyValuePair<string, object>(pn, r.GetRawValue(item.ColumnName)));
                             batch.Append(pn);
                         }

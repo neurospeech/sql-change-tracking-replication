@@ -16,6 +16,11 @@ namespace SqlReplicator.Core
 
         public ConfigJob Job { get; set; }
 
+        public DatabaseReplicatorTask()
+        {
+            SqlServerTypes.Utilities.LoadNativeAssemblies(AppDomain.CurrentDomain.BaseDirectory);
+        }
+
 
         public async Task ReplicateAsync() {
 
@@ -59,28 +64,20 @@ namespace SqlReplicator.Core
                     // await destQuery.ExecuteAsync(Scripts.CreateReplicationStateTable);
                     await destQuery.CreateReplicationStateTable();
 
-                    await Task.WhenAll(Job.Tables.Select(x => SyncTableSchema(x)));
-
                 }
             }
 
             // await Task.WhenAll( Job.Tables.Select( x=> SyncTable(x) ) );
 
-            foreach (var table in Job.Tables)
-            {
-                await SyncTableSchema(table);
-                // await SyncTable(table);
+            foreach(var table in Job.Tables.Slice(8)) {
+                await Task.WhenAll(table.Select(x => SyncTable(x)));
             }
 
-        }
+            //foreach (var table in Job.Tables)
+            //{
+            //    await SyncTable(table);
+            //}
 
-        private async Task SyncTableSchema(SqlTable table)
-        {
-            using (var destQuery = await Job.Destination.OpenAsync())
-            {
-                Trace.WriteLine($"SYNC SCHEMA: {table.Name}");
-                await destQuery.SyncSchema(table.Name, table.Columns);
-            }
         }
 
         private async Task SyncTable(SqlTable srcTable)
@@ -94,21 +91,23 @@ namespace SqlReplicator.Core
                     try
                     {
 
+                        // first always sync schema if there are any changes...
+                        await destQuery.SyncSchema(srcTable.Name, srcTable.Columns);
+
                         state = await destQuery.GetLastSyncVersion(srcTable);
                         
-                        if (state.LastFullSync < now)
+                        if (state.LastFullSync < now || state.LastVersion == 0)
                         {
                             // full sync pending ???
 
 
-                            state.LastVersion = await sourceQuery.GetCurrentVersionAsync(srcTable);
                             state.LastSyncResult = "Full sync started";
-                            await SyncTableSchema(srcTable);
 
                             await destQuery.UpdateSyncState(state);
 
                             await FullSyncAsync(sourceQuery, destQuery, srcTable);
 
+                            state.LastVersion = await sourceQuery.GetCurrentVersionAsync(srcTable);
                             state.LastFullSync = DateTime.UtcNow;
                             state.LastSyncResult = "Full sync finished";
                             await destQuery.UpdateSyncState(state);

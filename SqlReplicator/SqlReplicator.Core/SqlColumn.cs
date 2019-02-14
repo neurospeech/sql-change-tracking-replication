@@ -120,6 +120,25 @@ namespace SqlReplicator.Core
                 //if (!DataType.Equals(dest.DataType, StringComparison.OrdinalIgnoreCase))
                 //    return false;
 
+
+                if (this.DbType == DbType.Guid)
+                {
+                    if (dest.DbType == DbType.StringFixedLength || dest.DbType == DbType.String) {
+                        if (dest.DataLength == 36)
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                if (dest.DbType == DbType.Guid)
+                {
+                    if(dest.Equals(this))
+                    {
+                        return true;
+                    }
+                }
+
                 if (this.DbType != dest.DbType)
                 {
                     return false;
@@ -129,6 +148,16 @@ namespace SqlReplicator.Core
                     return true;
 
                 if (this.DbType == DbType.Guid)
+                {
+                    return true;
+                }
+
+                if (this.DbType == DbType.Double)
+                {
+                    return true;
+                }
+
+                if (this.DbType == DbType.Object)
                 {
                     return true;
                 }

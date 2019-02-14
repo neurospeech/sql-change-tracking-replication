@@ -5,3 +5,7 @@
 **/bin
 **/.vs
 /SqlReplicator/packages
+/SqlReplicator/NeuroSpeech.SqlReplicator.Service/SqlServerTypes
+/SqlReplicator/SqlReplicator/SqlServerTypes
+/SqlReplicator/SqlReplicator.Core/SqlServerTypes
+/SqlReplicator/SqlReplicator.Test/SqlServerTypes
