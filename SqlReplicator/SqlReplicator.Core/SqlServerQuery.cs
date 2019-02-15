@@ -37,6 +37,7 @@ namespace SqlReplicator.Core
                 builder.IntegratedSecurity = config.TrustedConnection;
                 builder.Encrypt = config.Encrypt;
                 builder.TrustServerCertificate = config.TrustCertificate;
+                builder.ConnectTimeout = 60;
                 connectionString = builder.ConnectionString;
             }
             conn = new SqlConnection(connectionString);

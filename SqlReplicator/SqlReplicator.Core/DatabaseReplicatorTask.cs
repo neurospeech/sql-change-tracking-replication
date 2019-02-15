@@ -69,8 +69,32 @@ namespace SqlReplicator.Core
 
             // await Task.WhenAll( Job.Tables.Select( x=> SyncTable(x) ) );
 
-            foreach(var table in Job.Tables.Slice(8)) {
-                await Task.WhenAll(table.Select(x => SyncTable(x)));
+            foreach(var table in Job.Tables.Slice(4)) {
+                await Task.WhenAll(table.Select( async x =>
+                {
+                    int i = 3;
+                    while (true)
+                    {
+                        i--;
+                        try
+                        {
+                            await SyncTable(x);
+                            break;
+                        } catch (Exception ex)
+                        {
+                            if (i <= 0)
+                            {
+                                Trace.WriteLine(ex.ToString());
+                                break;
+                            }
+                            if (ex.ToString().ToLower().Contains("timeout"))
+                            {
+                                await Task.Delay(TimeSpan.FromSeconds(30));
+                                continue;
+                            }
+                        }
+                    }
+                }));
             }
 
             //foreach (var table in Job.Tables)

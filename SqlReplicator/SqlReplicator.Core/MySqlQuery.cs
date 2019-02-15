@@ -1,4 +1,5 @@
-﻿using MySql.Data.MySqlClient;
+﻿using Microsoft.SqlServer.Types;
+using MySql.Data.MySqlClient;
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
@@ -452,7 +453,7 @@ namespace SqlReplicator.Core
                 batch.Append(cmd);
                 var reader = r.Reader;
                 List<KeyValuePair<string, object>> plist = new List<KeyValuePair<string, object>>();
-                for (int i = 0; i < 100; i++)
+                for (int i = 0; i < 1; i++)
                 {
                     if(await r.ReadAsync()) {
                         int n = 0;
@@ -469,11 +470,16 @@ namespace SqlReplicator.Core
                             }
                             var pn = $"@p{i}_{n++}";
                             var rv = r.GetRawValue(item.ColumnName);
-                            if (rv is DbGeography dg) {
-                                rv = DbGeometry.PointFromText(dg.WellKnownValue.WellKnownText, dg.WellKnownValue.CoordinateSystemId);
+                            if (rv is SqlGeography dg) {
+                                
+                                rv = dg.ToString();
+                                batch.Append($"ST_GeomFromText({pn})");
                             }
-                            plist.Add(new KeyValuePair<string, object>(pn, r.GetRawValue(item.ColumnName)));
-                            batch.Append(pn);
+                            else
+                            {
+                                batch.Append(pn);
+                            }
+                            plist.Add(new KeyValuePair<string, object>(pn, rv));
                         }
                         batch.Append(')');
                         continue;

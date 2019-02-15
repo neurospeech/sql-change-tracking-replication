@@ -15,15 +15,11 @@ namespace SqlReplicator.Test
                 test.Job = new ConfigJob {
                     Source = new ConfigDatabase {
                         Server = "s800",
-                        Database = "Casting800",
                         TrustedConnection = true,
                     },
                     Destination = new ConfigDatabase {
                         Provider = "MySql.Data.MySqlClient",
-                        Server = "192.168.0.6",
                         Username = "test",
-                        Password = "$abcd123",
-                        Database = "Casting"
                     }
                 };
 
