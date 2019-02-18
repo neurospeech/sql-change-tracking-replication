@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Data.Entity.Spatial;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -97,7 +98,7 @@ namespace SqlReplicator.Core
         public async override Task<SyncState> GetLastSyncVersion(SqlTable srcTable)
         {
             string name = srcTable.Name;
-            var beginSync = $"REPLACE INTO CT_REPLICATIONSTATE SET BeginSync = UTC_TIMESTAMP(), TableName = @TableName";
+            var beginSync = $"INSERT INTO CT_REPLICATIONSTATE(BeginSync, TableName) VALUES (UTC_TIMESTAMP(), @TableName) ON DUPLICATE KEY UPDATE BeginSync=UTC_TIMESTAMP()";
             await ExecuteAsync(beginSync,
                 new KeyValuePair<string, object>("@TableName", name));
 
@@ -183,6 +184,11 @@ namespace SqlReplicator.Core
                         pk.LastValue = r.GetValue<object>(pk.ColumnName);
                     }
                 }
+            }
+
+            if (Log)
+            {
+                Trace.WriteLine($"PK Values: { string.Join(",", srcTable.PrimaryKey.Select(p => p.LastValue.ToString()) )}");
             }
         }
         #endregion
@@ -453,7 +459,7 @@ namespace SqlReplicator.Core
                 batch.Append(cmd);
                 var reader = r.Reader;
                 List<KeyValuePair<string, object>> plist = new List<KeyValuePair<string, object>>();
-                for (int i = 0; i < 1; i++)
+                for (int i = 0; i < 100; i++)
                 {
                     if(await r.ReadAsync()) {
                         int n = 0;

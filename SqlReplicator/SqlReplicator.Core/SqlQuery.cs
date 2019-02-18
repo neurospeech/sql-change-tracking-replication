@@ -38,7 +38,6 @@ namespace SqlReplicator.Core
 
         protected bool Log = false;
 
-
         public SqlQuery(ConfigDatabase config)
         {
             this.config = config;

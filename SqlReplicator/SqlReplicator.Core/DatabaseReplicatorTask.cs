@@ -69,7 +69,7 @@ namespace SqlReplicator.Core
 
             // await Task.WhenAll( Job.Tables.Select( x=> SyncTable(x) ) );
 
-            foreach(var table in Job.Tables.Slice(4)) {
+            foreach(var table in Job.Tables.Slice(4).ToList()) {
                 await Task.WhenAll(table.Select( async x =>
                 {
                     int i = 3;
@@ -120,7 +120,7 @@ namespace SqlReplicator.Core
 
                         state = await destQuery.GetLastSyncVersion(srcTable);
                         
-                        if (state.LastFullSync < now || state.LastVersion == 0)
+                        if (state.LastVersion == 0)
                         {
                             // full sync pending ???
 

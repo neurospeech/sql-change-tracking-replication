@@ -57,6 +57,7 @@ namespace SqlReplicator.Core
         {
             var cmd = conn.CreateCommand();
             cmd.CommandText = command;
+            cmd.CommandTimeout = 120;
             if (plist != null)
             {
                 foreach (var p in plist)
