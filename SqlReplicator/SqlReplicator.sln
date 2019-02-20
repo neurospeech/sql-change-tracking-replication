@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.25420.1
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.421
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlReplicator", "SqlReplicator\SqlReplicator.csproj", "{C3F987DE-CF0D-4728-AFDA-07806CDEF5AA}"
 EndProject
@@ -10,6 +10,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NeuroSpeech.SqlReplicator.Service", "NeuroSpeech.SqlReplicator.Service\NeuroSpeech.SqlReplicator.Service.csproj", "{90C6C50F-A001-4C91-B6ED-DC16C9D0C4AA}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlReplicator.Test", "SqlReplicator.Test\SqlReplicator.Test.csproj", "{CF207916-13AA-46A8-B65A-D9F32506765F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlReplicatorConsole", "SqlReplicatorConsole\SqlReplicatorConsole.csproj", "{533DD8B3-0D3E-464B-9E84-0ED4659BC600}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,8 +35,15 @@ Global
 		{CF207916-13AA-46A8-B65A-D9F32506765F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CF207916-13AA-46A8-B65A-D9F32506765F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CF207916-13AA-46A8-B65A-D9F32506765F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{533DD8B3-0D3E-464B-9E84-0ED4659BC600}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{533DD8B3-0D3E-464B-9E84-0ED4659BC600}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{533DD8B3-0D3E-464B-9E84-0ED4659BC600}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{533DD8B3-0D3E-464B-9E84-0ED4659BC600}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {9ECE1E26-20E8-4EAE-8A4B-0976936D89EC}
 	EndGlobalSection
 EndGlobal

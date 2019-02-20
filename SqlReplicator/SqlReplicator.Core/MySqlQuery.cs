@@ -136,7 +136,12 @@ namespace SqlReplicator.Core
             if (string.IsNullOrEmpty(connectionString))
             {
                 MySqlConnectionStringBuilder builder = new MySqlConnectionStringBuilder();
-                builder.Server = config.Server;
+                var tokens = config.Server.Split(':');
+                builder.Server = tokens[0];
+                if (tokens.Length > 1)
+                {
+                    builder.Port = uint.Parse(tokens[1]);
+                }
                 if (!string.IsNullOrEmpty(config.Username))
                 {
                     builder.UserID = config.Username;
