@@ -73,6 +73,49 @@ namespace SqlReplicator.Core
             return $"[{text}]";
         }
 
+        public override async Task GetIndexes(List<SqlTable> tables)
+        {
+            var indexColumns = new List<SqlIndexColumn>();
+            using(var reader = await ReadAsync(Scripts.QueryIndexes))
+            {
+                while(await reader.ReadAsync())
+                {
+                    var index = new SqlIndexColumn
+                    {
+                    };
+                    index.TableName = reader.GetValue<string>("TableName");
+                    index.IndexName = reader.GetValue<string>("IndexName");
+                    index.ColumnName = reader.GetValue<string>("ColumnName");
+                    index.Order = reader.GetValue<int>("key_ordinal");
+                    indexColumns.Add(index);
+                }
+            }
+
+            foreach (var tableIndex in indexColumns.GroupBy(x => x.TableName))
+            {
+                var table = tables.FirstOrDefault(x => x.Name.Equals(tableIndex.Key, StringComparison.OrdinalIgnoreCase));
+                if (table == null)
+                {
+                    continue;
+                }
+                foreach (var index in tableIndex.GroupBy(x => x.IndexName))
+                {
+                    var sqlIndex = new SqlIndex {
+                        Name = index.Key
+                    };
+
+                    foreach (var indexColumn in index.OrderBy(x => x.Order))
+                    {
+                        var column = table.Columns.FirstOrDefault(x => x.ColumnName.Equals(indexColumn.ColumnName, StringComparison.OrdinalIgnoreCase));
+                        sqlIndex.Columns.Add(column);
+                    }
+
+                    table.Indexes.Add(sqlIndex);
+                }
+
+            }
+        }
+
         public override async Task<List<SqlColumn>> GetCommonSchemaAsync(string tableName = null)
         {
 
@@ -109,8 +152,10 @@ namespace SqlReplicator.Core
             return columns;
         }
 
-        public async override Task SyncSchema(string name, List<SqlColumn> columns)
+        public async override Task SyncSchema(SqlTable table)
         {
+            string name = table.Name;
+            List< SqlColumn > columns = table.Columns;
 
             var allColumns = new List<SqlColumn>();
 

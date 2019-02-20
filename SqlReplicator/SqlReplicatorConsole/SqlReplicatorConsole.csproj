@@ -56,6 +56,12 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\SqlReplicator.Core\SqlReplicator.Core.csproj">
+      <Project>{ac70ed89-8c66-40e1-a356-396a35376a15}</Project>
+      <Name>SqlReplicator.Core</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
     <Content Include="SqlServerTypes\readme.htm" />
     <Content Include="SqlServerTypes\x64\msvcr120.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -69,12 +75,6 @@
     <Content Include="SqlServerTypes\x86\SqlServerSpatial140.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\SqlReplicator.Core\SqlReplicator.Core.csproj">
-      <Project>{ac70ed89-8c66-40e1-a356-396a35376a15}</Project>
-      <Name>SqlReplicator.Core</Name>
-    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

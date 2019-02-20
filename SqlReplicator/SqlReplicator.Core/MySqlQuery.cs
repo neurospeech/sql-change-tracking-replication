@@ -226,8 +226,11 @@ namespace SqlReplicator.Core
             return ExecuteAsync(Scripts.MySqlCreateReplicationTable);
         }
 
-        public override async Task SyncSchema(string name, List<SqlColumn> columns)
+        public override async Task SyncSchema(SqlTable table)
         {
+            string name = table.Name;
+            List< SqlColumn > columns = table.Columns;
+
             var allColumns = new List<SqlColumn>();
 
             var destColumns = await GetCommonSchemaAsync(name);
@@ -253,6 +256,24 @@ namespace SqlReplicator.Core
 
             if (destColumns.Count == 0)
             {
+
+                // since it is first time, lets create indexes...
+                // get only 16 parts...
+                foreach (var index in table.Indexes)
+                {
+                    var indexColumns = string.Join(",", index.Columns.Take(16).Select(x => Escape(x.ColumnName)));
+
+                    var indexSql = $"CREATE INDEX {Escape(index.Name)} ON {Escape(table.Name)} ({indexColumns})";
+
+                    try
+                    {
+                        await ExecuteAsync(indexSql);
+                    } catch( Exception ex)
+                    {
+                        Console.WriteLine(ex);
+                    }
+                }
+
                 return;
             }
 
@@ -283,7 +304,6 @@ namespace SqlReplicator.Core
             var columnsQuery = string.Join(",\r\n\t", columnsToAdd.Select(c => $"ADD {ToColumn(c)}"));
             await ExecuteAsync($"ALTER TABLE {Escape(name)} {columnsQuery}");
 
-            Console.WriteLine($"Table {name} sync complete");
         }
 
         string ToDataType(SqlColumn c)

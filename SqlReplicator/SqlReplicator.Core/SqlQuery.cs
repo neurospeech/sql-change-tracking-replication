@@ -62,6 +62,11 @@ namespace SqlReplicator.Core
             return new SqlRowSet(cmd, await cmd.ExecuteReaderAsync());
         }
 
+        public virtual Task GetIndexes(List<SqlTable> tables)
+        {
+            return Task.CompletedTask;
+        }
+
         public async Task<int> ExecuteAsync(string command, IEnumerable<KeyValuePair<string, object>> plist = null)
         {
             using (var cmd = CreateCommand(command, plist))
@@ -103,7 +108,7 @@ namespace SqlReplicator.Core
         public abstract void Dispose();
 
         public abstract Task<List<SqlColumn>> GetCommonSchemaAsync(string tableName = null);
-        public abstract Task SyncSchema(string name, List<SqlColumn> schemaTable);
+        public abstract Task SyncSchema(SqlTable table);
         internal abstract Task SetupChangeTrackingAsync(List<SqlTable> tables);
 
         public abstract Task<SyncState> GetLastSyncVersion(SqlTable srcTable);

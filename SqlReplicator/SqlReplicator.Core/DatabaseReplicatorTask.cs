@@ -31,7 +31,7 @@ namespace SqlReplicator.Core
             using (var sourceQuery = await Job.Source.OpenAsync())
             {
 
-                var columns = await sourceQuery.GetCommonSchemaAsync();
+                var columns = (await sourceQuery.GetCommonSchemaAsync()).OrderBy( x=> x.TableName);
 
                 foreach (var table in columns.GroupBy(x => x.TableName)) {
                     SqlTable st = new SqlTable();
@@ -42,15 +42,18 @@ namespace SqlReplicator.Core
 
                     if (!st.PrimaryKey.Any()) {
                         // throw new InvalidOperationException("Each table for replication must have atleast one primary key");
-                        Trace.TraceWarning($"Table {table.Key} does not have any primary key");
+                        Console.WriteLine($"Table {table.Key} does not have any primary key");
                         continue;
                     }
 
                     Job.Tables.Add(st);
+
                 }
                 if (isFirstTime)
                 {
                     await sourceQuery.SetupChangeTrackingAsync(Job.Tables);
+
+                    await sourceQuery.GetIndexes(Job.Tables);
                 }
 
             }
@@ -69,38 +72,39 @@ namespace SqlReplicator.Core
 
             // await Task.WhenAll( Job.Tables.Select( x=> SyncTable(x) ) );
 
-            foreach(var table in Job.Tables.Slice(4).ToList()) {
-                await Task.WhenAll(table.Select( async x =>
-                {
-                    int i = 3;
-                    while (true)
-                    {
-                        i--;
-                        try
-                        {
-                            await SyncTable(x);
-                            break;
-                        } catch (Exception ex)
-                        {
-                            if (i <= 0)
-                            {
-                                Trace.WriteLine(ex.ToString());
-                                break;
-                            }
-                            if (ex.ToString().ToLower().Contains("timeout"))
-                            {
-                                await Task.Delay(TimeSpan.FromSeconds(30));
-                                continue;
-                            }
-                        }
-                    }
-                }));
-            }
-
-            //foreach (var table in Job.Tables)
-            //{
-            //    await SyncTable(table);
+            //foreach(var table in Job.Tables.Slice(4).ToList()) {
+            //    await Task.WhenAll(table.ToList().Select( async x =>
+            //    {
+            //        int i = 3;
+            //        while (true)
+            //        {
+            //            i--;
+            //            try
+            //            {
+            //                await SyncTable(x);
+            //                return;
+            //            } catch (Exception ex)
+            //            {
+            //                if (i <= 0)
+            //                {
+            //                    Console.Write(ex);
+            //                    break;
+            //                }
+            //                if (ex.ToString().ToLower().Contains("timeout"))
+            //                {
+            //                    await Task.Delay(TimeSpan.FromSeconds(30));
+            //                    continue;
+            //                }
+            //            }
+            //        }
+            //    }));
             //}
+
+            foreach (var table in Job.Tables)
+            {
+                Console.WriteLine($"Syncing {table.Name}");
+                await SyncTable(table);
+            }
 
         }
 
@@ -116,7 +120,7 @@ namespace SqlReplicator.Core
                     {
 
                         // first always sync schema if there are any changes...
-                        await destQuery.SyncSchema(srcTable.Name, srcTable.Columns);
+                        await destQuery.SyncSchema(srcTable);
 
                         state = await destQuery.GetLastSyncVersion(srcTable);
                         
@@ -147,7 +151,7 @@ namespace SqlReplicator.Core
 
                     }
                     catch (Exception ex) {
-                        Trace.TraceError(ex.ToString());
+                        Console.WriteLine(ex);
                         state.LastSyncResult = ex.ToString();
                         await destQuery.UpdateSyncState(state);
                     }

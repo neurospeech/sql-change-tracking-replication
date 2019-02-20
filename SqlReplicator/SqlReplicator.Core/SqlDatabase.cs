@@ -1,5 +1,4 @@
-﻿using Newtonsoft.Json;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -25,5 +24,23 @@ namespace SqlReplicator.Core
         public List<SqlColumn> Columns { get; }
             = new List<SqlColumn>();
 
+
+        public List<SqlIndex> Indexes { get; } = new List<SqlIndex>();
+    }
+
+    public class SqlIndex
+    {
+        public string Name { get; set; }
+
+        public List<SqlColumn> Columns { get; } = new List<SqlColumn>();
+
+    }
+
+    public class SqlIndexColumn
+    {
+        public string TableName { get; set; }
+        public string ColumnName { get; set; }
+        public string IndexName { get; set; }
+        public int Order { get; set; }
     }
 }
