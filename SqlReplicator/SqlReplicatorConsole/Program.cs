@@ -11,7 +11,7 @@ namespace SqlReplicatorConsole
     {
         static void Main(string[] args)
         {
-            SqlServerTypes.Utilities.LoadNativeAssemblies(AppDomain.CurrentDomain.BaseDirectory);
+            SqlServerTypes1.Utilities.LoadNativeAssemblies(AppDomain.CurrentDomain.BaseDirectory);
 
             // start the task...
             SqlReplicator.Core.DatabaseReplicatorTask task = new SqlReplicator.Core.DatabaseReplicatorTask();

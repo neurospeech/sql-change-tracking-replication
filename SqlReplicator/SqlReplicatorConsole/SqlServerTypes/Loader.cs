@@ -2,7 +2,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace SqlServerTypes
+namespace SqlServerTypes1
 {
     /// <summary>
     /// Utility methods related to CLR Types for SQL Server 

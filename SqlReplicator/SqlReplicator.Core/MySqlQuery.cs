@@ -188,6 +188,9 @@ namespace SqlReplicator.Core
                     {
                         pk.LastValue = r.GetValue<object>(pk.ColumnName);
                     }
+                } else
+                {
+                    return;
                 }
             }
 

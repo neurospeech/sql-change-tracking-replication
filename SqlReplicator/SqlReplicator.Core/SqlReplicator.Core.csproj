@@ -98,6 +98,7 @@
     <Content Include="Scripts\CreateReplicationStateTable.sql" />
     <Content Include="Scripts\BeginSyncRST.sql" />
     <Content Include="Scripts\MySqlCreateReplicationTable.sql" />
+    <Content Include="Scripts\QueryIndexes.sql" />
     <Content Include="Scripts\SqlExtension.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
       <LastGenOutput>SqlExtension.cs</LastGenOutput>
