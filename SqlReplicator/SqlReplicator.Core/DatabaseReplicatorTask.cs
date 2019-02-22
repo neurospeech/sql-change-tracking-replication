@@ -133,7 +133,10 @@ namespace SqlReplicator.Core
 
                             await destQuery.UpdateSyncState(state);
 
-                            await FullSyncAsync(sourceQuery, destQuery, srcTable);
+                            if(!await FullSyncAsync(sourceQuery, destQuery, srcTable))
+                            {
+                                return;
+                            }
 
                             state.LastVersion = await sourceQuery.GetCurrentVersionAsync(srcTable);
                             state.LastFullSync = DateTime.UtcNow;
@@ -160,10 +163,10 @@ namespace SqlReplicator.Core
         }
 
 
-        private async Task FullSyncAsync(SqlQuery sourceQuery, SqlQuery destQuery, SqlTable srcTable)
+        private async Task<bool> FullSyncAsync(SqlQuery sourceQuery, SqlQuery destQuery, SqlTable srcTable)
         {
 
-            for(var i=0;i<100;i++)
+            for(var i=0;i<100000;i++)
             {
 
 
@@ -171,13 +174,14 @@ namespace SqlReplicator.Core
 
                 using (var r = await sourceQuery.ReadObjectsAbovePrimaryKeys(srcTable))
                 {
-                    if (!await destQuery.WriteToServerAsync(srcTable,r))
-                        break;
+                    long copied = await destQuery.WriteToServerAsync(srcTable, r);
+                    if (copied == 0)
+                        return true;
                 }
 
-            } 
+            }
 
-            
+            return false;
 
         }
 

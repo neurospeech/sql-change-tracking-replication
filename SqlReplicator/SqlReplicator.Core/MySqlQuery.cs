@@ -477,8 +477,9 @@ namespace SqlReplicator.Core
         }
         #endregion
 
-        public override async Task<bool> WriteToServerAsync(SqlTable table, SqlRowSet r)
+        public override async Task<long> WriteToServerAsync(SqlTable table, SqlRowSet r)
         {
+            long copied = 0;
             var cmd = $"REPLACE INTO {Escape(table.Name)} ({ string.Join(",", table.Columns.Select(x => Escape(x.ColumnName))) }) VALUES ";
             StringBuilder batch = new StringBuilder();
             while (true)
@@ -490,6 +491,7 @@ namespace SqlReplicator.Core
                 for (int i = 0; i < 100; i++)
                 {
                     if(await r.ReadAsync()) {
+                        copied++;
                         int n = 0;
                         if (i > 0)
                         {
@@ -526,7 +528,7 @@ namespace SqlReplicator.Core
                 }
                 await ExecuteAsync(batch.ToString(), plist);
             }
-            return true;
+            return copied;
         }
 
         internal override Task SetupChangeTrackingAsync(List<SqlTable> tables)
