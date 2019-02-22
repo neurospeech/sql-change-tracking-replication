@@ -490,37 +490,37 @@ namespace SqlReplicator.Core
                 List<KeyValuePair<string, object>> plist = new List<KeyValuePair<string, object>>();
                 for (int i = 0; i < 100; i++)
                 {
-                    if(await r.ReadAsync()) {
-                        copied++;
-                        int n = 0;
-                        if (i > 0)
+                    if (!await r.ReadAsync())
+                    {
+                        break;
+                    }
+                    copied++;
+                    int n = 0;
+                    if (i > 0)
+                    {
+                        batch.Append(',');
+                    }
+                    batch.Append('(');
+                    foreach (var item in table.Columns)
+                    {
+                        if (n>0)
                         {
                             batch.Append(',');
                         }
-                        batch.Append('(');
-                        foreach (var item in table.Columns)
-                        {
-                            if (n>0)
-                            {
-                                batch.Append(',');
-                            }
-                            var pn = $"@p{i}_{n++}";
-                            var rv = r.GetRawValue(item.ColumnName);
-                            if (rv is SqlGeography dg) {
+                        var pn = $"@p{i}_{n++}";
+                        var rv = r.GetRawValue(item.ColumnName);
+                        if (rv is SqlGeography dg) {
                                 
-                                rv = dg.ToString();
-                                batch.Append($"ST_GeomFromText({pn})");
-                            }
-                            else
-                            {
-                                batch.Append(pn);
-                            }
-                            plist.Add(new KeyValuePair<string, object>(pn, rv));
+                            rv = dg.ToString();
+                            batch.Append($"ST_GeomFromText({pn})");
                         }
-                        batch.Append(')');
-                        continue;
+                        else
+                        {
+                            batch.Append(pn);
+                        }
+                        plist.Add(new KeyValuePair<string, object>(pn, rv));
                     }
-                    break;
+                    batch.Append(')');
                 }
                 if (plist.Count == 0)
                 {
