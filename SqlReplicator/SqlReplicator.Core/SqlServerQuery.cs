@@ -454,15 +454,15 @@ namespace SqlReplicator.Core
             return ReadAsync(s, parray);
         }
 
-        public async override Task<bool> WriteToServerAsync(SqlTable table,SqlRowSet r)
+        public async override Task<long> WriteToServerAsync(SqlTable table,SqlRowSet r)
         {
-            bool copied = false;
+            long copied = 0;
             using (SqlBulkCopy bcp = new SqlBulkCopy(this.conn, SqlBulkCopyOptions.KeepIdentity | SqlBulkCopyOptions.UseInternalTransaction,null)) {
 
                 bcp.SqlRowsCopied += (s, e) => {
                     if (e.RowsCopied > 0)
                     {
-                        copied = true;
+                        copied = e.RowsCopied;
                     }
                 };
 

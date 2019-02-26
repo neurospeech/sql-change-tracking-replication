@@ -121,7 +121,7 @@ namespace SqlReplicator.Core
         public abstract Task<IEnumerable<ChangedData>> ReadChangedRows(SqlTable srcTable, long lastVersion);
 
         public abstract Task<SqlRowSet> ReadObjectsAbovePrimaryKeys(SqlTable srcTable);
-        public abstract Task<bool> WriteToServerAsync(SqlTable table,SqlRowSet r);
+        public abstract Task<long> WriteToServerAsync(SqlTable table,SqlRowSet r);
         internal abstract Task WriteToServerAsync(SqlTable srcTable, IEnumerable<ChangedData> changes, SyncState state);
 
         public abstract string Escape(string text);

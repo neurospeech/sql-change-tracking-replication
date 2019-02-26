@@ -186,7 +186,14 @@ namespace SqlReplicator.Core
                 {
                     foreach (var pk in srcTable.PrimaryKey)
                     {
-                        pk.LastValue = r.GetValue<object>(pk.ColumnName);
+                        if (pk.DbType == System.Data.DbType.Int64)
+                        {
+                            pk.LastValue = r.GetValue<long>(pk.ColumnName);
+                        }
+                        else
+                        {
+                            pk.LastValue = r.GetValue<object>(pk.ColumnName);
+                        }
                     }
                 } else
                 {
@@ -477,10 +484,11 @@ namespace SqlReplicator.Core
         }
         #endregion
 
-        public override async Task<bool> WriteToServerAsync(SqlTable table, SqlRowSet r)
+        public override async Task<long> WriteToServerAsync(SqlTable table, SqlRowSet r)
         {
             var cmd = $"REPLACE INTO {Escape(table.Name)} ({ string.Join(",", table.Columns.Select(x => Escape(x.ColumnName))) }) VALUES ";
             StringBuilder batch = new StringBuilder();
+            int rowsWritten = 0;
             while (true)
             {
                 batch.Clear();
@@ -489,7 +497,9 @@ namespace SqlReplicator.Core
                 List<KeyValuePair<string, object>> plist = new List<KeyValuePair<string, object>>();
                 for (int i = 0; i < 100; i++)
                 {
-                    if(await r.ReadAsync()) {
+                    if (await r.ReadAsync())
+                    {
+                        rowsWritten++;
                         int n = 0;
                         if (i > 0)
                         {
@@ -498,14 +508,15 @@ namespace SqlReplicator.Core
                         batch.Append('(');
                         foreach (var item in table.Columns)
                         {
-                            if (n>0)
+                            if (n > 0)
                             {
                                 batch.Append(',');
                             }
                             var pn = $"@p{i}_{n++}";
                             var rv = r.GetRawValue(item.ColumnName);
-                            if (rv is SqlGeography dg) {
-                                
+                            if (rv is SqlGeography dg)
+                            {
+
                                 rv = dg.ToString();
                                 batch.Append($"ST_GeomFromText({pn})");
                             }
@@ -518,15 +529,16 @@ namespace SqlReplicator.Core
                         batch.Append(')');
                         continue;
                     }
-                    break;
+                    else {
+                        break;
+                    }
                 }
                 if (plist.Count == 0)
                 {
-                    break;
+                    return rowsWritten;
                 }
                 await ExecuteAsync(batch.ToString(), plist);
             }
-            return true;
         }
 
         internal override Task SetupChangeTrackingAsync(List<SqlTable> tables)

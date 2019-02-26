@@ -51,7 +51,7 @@ namespace SqlReplicator.Core
                 }
                 if (isFirstTime)
                 {
-                    await sourceQuery.SetupChangeTrackingAsync(Job.Tables);
+                    // await sourceQuery.SetupChangeTrackingAsync(Job.Tables);
 
                     await sourceQuery.GetIndexes(Job.Tables);
                 }
@@ -100,12 +100,21 @@ namespace SqlReplicator.Core
             //    }));
             //}
 
+            //foreach (var table in Job.Tables.Slice(4).ToList())
+            //{
+            //    var list = table.ToList();
+            //    await Task.WhenAll(list.Select(SyncTable));
+            //    // Console.WriteLine($"Syncing {table.Name}");
+            //    // await SyncTable(table);
+            //    var names = string.Join(", ", list.Select(x => x.Name));
+            //    Console.WriteLine($"{names} Sync Complete");
+            //}
+
             foreach (var table in Job.Tables)
             {
                 Console.WriteLine($"Syncing {table.Name}");
                 await SyncTable(table);
             }
-
         }
 
         private async Task SyncTable(SqlTable srcTable)
@@ -133,7 +142,10 @@ namespace SqlReplicator.Core
 
                             await destQuery.UpdateSyncState(state);
 
-                            await FullSyncAsync(sourceQuery, destQuery, srcTable);
+                            if(!await FullSyncAsync(sourceQuery, destQuery, srcTable))
+                            {
+                                return;
+                            }
 
                             state.LastVersion = await sourceQuery.GetCurrentVersionAsync(srcTable);
                             state.LastFullSync = DateTime.UtcNow;
@@ -160,10 +172,10 @@ namespace SqlReplicator.Core
         }
 
 
-        private async Task FullSyncAsync(SqlQuery sourceQuery, SqlQuery destQuery, SqlTable srcTable)
+        private async Task<bool> FullSyncAsync(SqlQuery sourceQuery, SqlQuery destQuery, SqlTable srcTable)
         {
 
-            for(var i=0;i<100;i++)
+            while (true)
             {
 
 
@@ -171,11 +183,15 @@ namespace SqlReplicator.Core
 
                 using (var r = await sourceQuery.ReadObjectsAbovePrimaryKeys(srcTable))
                 {
-                    if (!await destQuery.WriteToServerAsync(srcTable,r))
-                        break;
+                    var copied = await destQuery.WriteToServerAsync(srcTable, r);
+                    if (copied == 0)
+                    {
+                        return true;
+                    }
                 }
 
-            } 
+            }
+            // return false;
 
             
 
